@@ -1,0 +1,23 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: uv sync --frozen
+      - run: uv run pytest -q
+      - run: uv run ruff check src tests
+      - run: uv run pyright
+      - run: node --check src/tripweaver/web/app.js
+      - run: uv run tripweaver evaluate --output reports/evaluation-fixture-v2.json

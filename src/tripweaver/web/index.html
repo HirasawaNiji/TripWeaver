@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>TripWeaver · 多源约束旅行 Agent</title><link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧭</text></svg>"><link rel="stylesheet" href="/static/styles.css">
+</head>
+<body><main class="shell">
+  <header class="hero"><div><p class="eyebrow">MCP · LLM · DETERMINISTIC PLANNING</p><h1>Trip<span>Weaver</span></h1><p class="lead">从多源事实到可验证行程，再通过对话逐步织出满意的旅行方案。</p></div><div class="system-badge"><i></i><span id="systemMode">正在检查运行模式</span></div></header>
+  <section id="composer" class="composer panel">
+    <div class="section-heading"><div><p class="step-label">01 / 描述需求</p><h2>你想去哪里？</h2></div><select id="scenario"><option value="">选择演示案例</option><option value="我想从广州去成都玩4天，2026-10-01出发，2个人，预算10000元，喜欢历史文化和美食，高铁或飞机都可以。">广州 → 成都</option><option value="从北京去上海玩3天，2026-10-01出发，2个人，预算8000元，喜欢博物馆和城市夜景，高铁或飞机都可以。">北京 → 上海</option><option value="从西安去重庆玩4天，2026-10-03出发，3个人，预算15000元，喜欢历史和美食，高铁或飞机都可以。">西安 → 重庆</option></select></div>
+    <textarea id="request">我想从广州去成都玩4天，2026-10-01出发，2个人，预算10000元，喜欢历史文化和美食，高铁或飞机都可以。</textarea>
+    <div class="composer-actions"><button id="create" class="primary">生成三个可验证方案 <span>→</span></button><p id="status" aria-live="polite">离线 Fixture 模式可直接演示，无需外部 Key</p></div><div id="progress" class="progress hidden"></div>
+  </section>
+  <section id="choiceSection" class="hidden"><div class="section-heading"><div><p class="step-label">02 / 比较</p><h2>选择一个起点</h2></div><p class="muted">三套方案共享同一数据快照</p></div><div id="alternatives" class="cards"></div></section>
+  <section id="workspace" class="workspace hidden">
+    <article class="plan-column">
+      <div class="toolbar panel"><div><p class="step-label">03 / 调整</p><h2 id="planTitle">当前行程</h2></div><div class="toolbar-actions"><button id="explain" class="ghost">AI 解读</button><button id="undo" class="ghost">撤销</button></div></div>
+      <div id="explanation" class="explanation panel hidden"></div><div id="overview" class="overview-grid"></div>
+      <div class="panel map-panel"><div class="panel-title"><div><p class="step-label">路线概览</p><h3>景点与住宿分布</h3></div><span class="muted">本地 SVG · 无额外地图请求</span></div><div id="map" class="map"></div></div>
+      <div class="panel"><div class="panel-title"><div><p class="step-label">每日安排</p><h3>可执行时间线</h3></div><span id="visitCount" class="pill"></span></div><div id="days" class="days"></div></div>
+      <div class="analytics-grid"><div class="panel"><div class="panel-title"><h3>预算构成</h3><span id="budgetTotal" class="pill"></span></div><div id="budget"></div></div><div class="panel"><div class="panel-title"><h3>数据可信度</h3><span class="pill">Provenance</span></div><div id="sources"></div></div></div>
+    </article>
+    <aside class="chat-column panel">
+      <div class="chat-head"><div><p class="step-label">Agent 工作台</p><h3>继续完善方案</h3></div><span id="modelBadge" class="model-badge">DETERMINISTIC</span></div>
+      <div class="locks"><p class="muted">锁定已满意的部分</p><label><input type="checkbox" value="outbound"> 去程</label><label><input type="checkbox" value="inbound"> 返程</label><label><input type="checkbox" value="lodging"> 住宿</label></div>
+      <div id="chat" class="chat"></div><div id="diff" class="diff hidden"></div>
+      <div class="quick-actions"><button data-prompt="返程不要飞机">返程换高铁</button><button data-prompt="时间优先">时间优先</button><button data-prompt="酒店每晚控制在500元">酒店 ≤ ¥500</button></div>
+      <div class="chat-input"><textarea id="revision" placeholder="例如：保留去程，返程不要飞机，酒店便宜一点"></textarea><button id="revise" class="primary">发送修改</button></div>
+      <div class="runtime"><div><span>数据获取</span><strong id="fetchCount">1 次</strong></div><div><span>本地重规划</span><strong id="revisionCount">0 次</strong></div><div><span>版本历史</span><strong id="historyCount">0</strong></div><div><span>Token</span><strong id="tokenCount">0</strong></div></div><div id="timeline" class="event-list"></div>
+    </aside>
+  </section>
+</main><script src="/static/app.js" defer></script></body></html>

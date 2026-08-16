@@ -7,9 +7,33 @@ from pathlib import Path
 from tripweaver.config import (
     AmapSettings,
     ConfigurationError,
+    DeepSeekSettings,
     RailwaySettings,
     VariflightSettings,
 )
+
+
+class DeepSeekSettingsTests(unittest.TestCase):
+    def test_loads_enabled_provider_without_exposing_key(self) -> None:
+        settings = DeepSeekSettings.from_env(
+            environ={
+                "DEEPSEEK_ENABLED": "true",
+                "DEEPSEEK_API_KEY": "private-deepseek-key",
+            },
+            env_file=Path("missing.env"),
+        )
+
+        self.assertTrue(settings.enabled)
+        self.assertEqual(settings.model, "deepseek-v4-flash")
+        self.assertEqual(settings.base_url, "https://api.deepseek.com")
+        self.assertNotIn("private-deepseek-key", repr(settings))
+
+    def test_enabled_provider_requires_key(self) -> None:
+        with self.assertRaises(ConfigurationError):
+            DeepSeekSettings.from_env(
+                environ={"DEEPSEEK_ENABLED": "true"},
+                env_file=Path("missing.env"),
+            )
 
 
 class AmapSettingsTests(unittest.TestCase):

@@ -1,0 +1,13 @@
+services:
+  tripweaver:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - tripweaver-data:/app/.tripweaver
+
+volumes:
+  tripweaver-data:

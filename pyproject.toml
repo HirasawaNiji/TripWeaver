@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tripweaver"
-version = "1.0.0"
+version = "3.0.0"
 description = "A provenance-aware, constraint-driven travel planning agent."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -13,12 +13,20 @@ dependencies = [
   "fastapi>=0.115,<1",
   "httpx>=0.27,<1",
   "mcp>=2,<3",
+  "openai>=2,<3",
   "pydantic>=2.10,<3",
   "uvicorn>=0.30,<1",
 ]
 
 [project.scripts]
 tripweaver = "tripweaver.cli:main"
+
+[dependency-groups]
+dev = [
+  "pytest>=8.3,<9",
+  "pyright>=1.1.400,<2",
+  "ruff>=0.12,<1",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/tripweaver"]

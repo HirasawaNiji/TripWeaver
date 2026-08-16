@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 from datetime import timedelta
+from time import monotonic
+from typing import Any, cast
 
 from pydantic import TypeAdapter, ValidationError
 
@@ -28,6 +30,7 @@ class McpAdapter:
     def __init__(self, gateway: McpGateway, server_name: str) -> None:
         self._gateway = gateway
         self._server_name = server_name
+        self._query_cache: dict[str, tuple[float, NormalizedMcpResponse[Any]]] = {}
 
     async def call_and_validate[T](
         self,
@@ -40,6 +43,17 @@ class McpAdapter:
         idempotent: bool = True,
         allow_text_json: bool = False,
     ) -> NormalizedMcpResponse[T]:
+        cache_key = json.dumps(
+            (tool_name, arguments), sort_keys=True, ensure_ascii=False, default=str
+        )
+        cached = self._query_cache.get(cache_key)
+        if cached is not None and cached[0] > monotonic():
+            response = cast(NormalizedMcpResponse[T], cached[1])
+            return response.model_copy(
+                update={
+                    "source": response.source.model_copy(update={"status": DataStatus.CACHED})
+                }
+            )
         result = await self._gateway.call_tool(
             self._server_name,
             tool_name,
@@ -72,11 +86,16 @@ class McpAdapter:
             source_reference=(f"mcp://{self._server_name}/{tool_name}?trace={result.trace_id}"),
             confidence=confidence,
         )
-        return NormalizedMcpResponse(
+        normalized = NormalizedMcpResponse(
             data=data,
             source=source,
             trace_id=result.trace_id,
         )
+        self._query_cache[cache_key] = (
+            monotonic() + max(ttl.total_seconds(), 0),
+            cast(NormalizedMcpResponse[Any], normalized),
+        )
+        return normalized
 
     def _decode_text_json(self, content: tuple[str, ...], tool_name: str) -> object:
         """Decode an explicitly opted-in, single-block JSON text response.

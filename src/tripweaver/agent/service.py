@@ -118,11 +118,11 @@ class ControlledTravelAgent:
                 ),
             ),
             result=result,
-            explanation=_explain(result),
+            explanation=explain_deterministically(result),
         )
 
 
-def _explain(result: HybridPlanResult) -> GroundedExplanation:
+def explain_deterministically(result: HybridPlanResult) -> GroundedExplanation:
     plan = result.plan
     itinerary = plan.itinerary
     request = plan.request

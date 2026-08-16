@@ -10,6 +10,7 @@ from tripweaver.agent import AgentRunStatus, ControlledTravelAgent
 from tripweaver.api import create_app
 from tripweaver.application.hybrid_service import HybridPlanResult
 from tripweaver.application.service import TripPlanningService
+from tripweaver.config import DeepSeekSettings
 from tripweaver.evaluation import EvaluationRunner, default_cases
 from tripweaver.runtime import MetricsStore, SQLitePlanCache
 
@@ -73,20 +74,22 @@ class RuntimeAndEvaluationTests(unittest.TestCase):
             )
             self.assertEqual(metrics.summary().cache_hits, 1)
 
-    def test_fixed_suite_has_40_cases_and_is_reproducible(self) -> None:
+    def test_fixed_suite_has_120_cases_and_is_reproducible(self) -> None:
         cases = default_cases()
         report = EvaluationRunner().run(cases)
 
-        self.assertEqual(len(cases), 40)
-        self.assertEqual(report.total_cases, 40)
+        self.assertEqual(len(cases), 120)
+        self.assertEqual(report.total_cases, 120)
         self.assertEqual(report.deterministic_stability_rate, 1)
         self.assertEqual(report.source_completeness_rate, 1)
-        self.assertEqual(report.passed_cases, 40)
+        self.assertEqual(report.replan_preservation_rate, 1)
+        self.assertEqual(report.security_rejection_rate, 1)
+        self.assertEqual(report.passed_cases, 120)
 
 
 class ApiTests(unittest.TestCase):
     def test_health_and_fixture_plan(self) -> None:
-        client = TestClient(create_app())
+        client = TestClient(create_app(llm_settings=DeepSeekSettings()))
 
         health = client.get("/health")
         plan = client.post("/v1/plans/fixture", json={"text": COMPLETE_REQUEST})
@@ -97,7 +100,7 @@ class ApiTests(unittest.TestCase):
         self.assertTrue(plan.json()["validation"]["feasible"])
 
     def test_agent_clarification_does_not_require_credentials(self) -> None:
-        client = TestClient(create_app())
+        client = TestClient(create_app(llm_settings=DeepSeekSettings()))
 
         response = client.post("/v1/agent/runs", json={"text": "从北京去上海玩"})
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from time import monotonic
 from typing import TYPE_CHECKING
 
@@ -18,6 +19,8 @@ from tripweaver.domain.models import (
     DomainModel,
     LodgingArea,
     Place,
+    PlanningObjective,
+    PlanningOverrides,
     PlanResult,
     TransportLeg,
     TransportMode,
@@ -31,6 +34,7 @@ from tripweaver.planner.aviation_snapshot import (
     AviationPlanningSnapshot,
     AviationSnapshotEnricher,
 )
+from tripweaver.planner.catalog import PlanningCatalog
 from tripweaver.planner.engine import DeterministicPlanner
 from tripweaver.planner.live_snapshot import (
     AmapPlanningSnapshotBuilder,
@@ -51,6 +55,26 @@ if TYPE_CHECKING:
     from tripweaver.runtime import MetricsStore, SQLitePlanCache
 
 
+@dataclass(frozen=True)
+class HybridPlanningContext:
+    """One completed provider fetch; all subsequent planning is network-free."""
+
+    request: TripRequest
+    catalog: PlanningCatalog
+    live_map_used: bool
+    map_places: tuple[Place, ...] = ()
+    weather: AmapWeather | None = None
+    live_rail_used: bool = False
+    rail_options: tuple[TransportOption, ...] = ()
+    rail_fallback_legs: tuple[TransportLeg, ...] = ()
+    live_flight_used: bool = False
+    flight_options: tuple[TransportOption, ...] = ()
+    flight_fallback_legs: tuple[TransportLeg, ...] = ()
+    fallback_reason: str | None = None
+    lodging_candidates: tuple[LodgingArea, ...] = ()
+    warnings: tuple[str, ...] = ()
+
+
 class HybridPlanResult(DomainModel):
     plan: PlanResult
     live_map_used: bool
@@ -65,6 +89,12 @@ class HybridPlanResult(DomainModel):
     fallback_reason: str | None = None
     lodging_candidates: tuple[LodgingArea, ...] = ()
     cache_hit: bool = False
+
+
+class HybridAlternativeSet(DomainModel):
+    request: TripRequest
+    alternatives: tuple[HybridPlanResult, ...]
+    data_fetch_count: int = 1
 
 
 class HybridTripPlanningService:
@@ -271,6 +301,127 @@ class HybridTripPlanningService:
             flight_fallback_legs=flight_fallback_legs,
             lodging_candidates=snapshot.lodging_areas,
         )
+
+    async def prepare(self, request: TripRequest) -> HybridPlanningContext:
+        """Fetch every enabled provider once and return a frozen planning context."""
+
+        try:
+            snapshot = await self._builder.build(request)
+        except (AmapProviderError, LiveSnapshotUnavailableError, McpGatewayError) as error:
+            return HybridPlanningContext(
+                request=request,
+                catalog=self._fixture,
+                live_map_used=False,
+                fallback_reason=type(error).__name__,
+                warnings=(
+                    f"高德实时快照不可用（{type(error).__name__}），已降级到 Fixture。",
+                ),
+            )
+
+        catalog = snapshot.catalog
+        railway_snapshot: RailwayPlanningSnapshot | None = None
+        aviation_snapshot: AviationPlanningSnapshot | None = None
+        if self._railway_enricher is not None and self._aviation_enricher is not None:
+            railway_snapshot, aviation_snapshot = await asyncio.gather(
+                self._railway_enricher.enrich(request, catalog),
+                self._aviation_enricher.enrich(request, catalog),
+            )
+        elif self._railway_enricher is not None:
+            railway_snapshot = await self._railway_enricher.enrich(request, catalog)
+        elif self._aviation_enricher is not None:
+            aviation_snapshot = await self._aviation_enricher.enrich(request, catalog)
+
+        rail_options = railway_snapshot.live_options if railway_snapshot else ()
+        rail_fallback = railway_snapshot.fallback_legs if railway_snapshot else ()
+        flight_options = aviation_snapshot.live_options if aviation_snapshot else ()
+        flight_fallback = aviation_snapshot.fallback_legs if aviation_snapshot else ()
+        warnings = snapshot.warnings
+        replacements: set[tuple[TransportMode, TransportLeg]] = set()
+        if railway_snapshot is not None:
+            replacements.update((TransportMode.RAIL, leg) for leg in railway_snapshot.live_legs)
+            warnings += railway_snapshot.warnings
+        if aviation_snapshot is not None:
+            replacements.update((TransportMode.FLIGHT, leg) for leg in aviation_snapshot.live_legs)
+            warnings += aviation_snapshot.warnings
+        if rail_options or flight_options:
+            baseline = catalog.transport_options(request)
+            merged = tuple(
+                option for option in baseline if (option.mode, option.leg) not in replacements
+            ) + rail_options + flight_options
+            catalog = catalog.with_transport_options(
+                tuple(
+                    sorted(
+                        merged,
+                        key=lambda item: (item.leg.value, item.mode.value, item.depart_at, item.id),
+                    )
+                )
+            )
+        return HybridPlanningContext(
+            request=request,
+            catalog=catalog,
+            live_map_used=True,
+            map_places=snapshot.places,
+            weather=snapshot.weather,
+            live_rail_used=bool(rail_options),
+            rail_options=rail_options,
+            rail_fallback_legs=rail_fallback,
+            live_flight_used=bool(flight_options),
+            flight_options=flight_options,
+            flight_fallback_legs=flight_fallback,
+            lodging_candidates=snapshot.lodging_areas,
+            warnings=warnings,
+        )
+
+    def plan_from_context(
+        self,
+        context: HybridPlanningContext,
+        *,
+        objective: PlanningObjective = PlanningObjective.BALANCED,
+        overrides: PlanningOverrides | None = None,
+    ) -> HybridPlanResult:
+        """Plan locally from a context without invoking an external provider."""
+
+        itinerary, places = DeterministicPlanner(
+            context.catalog, objective=objective, overrides=overrides
+        ).plan(context.request)
+        report = self._validator.validate(context.request, itinerary, places)
+        plan = PlanResult(
+            request=context.request,
+            itinerary=itinerary,
+            validation=report,
+            data_mode=DataStatus.ESTIMATED if context.live_map_used else DataStatus.FIXTURE,
+            warnings=(
+                f"{objective.value} 方案来自同一冻结快照；本次规划没有重复调用 MCP。",
+                "结果仅用于查询和演示，不提供预订、下单或支付能力。",
+                *context.warnings,
+            ),
+        )
+        return HybridPlanResult(
+            plan=plan,
+            live_map_used=context.live_map_used,
+            map_places=context.map_places,
+            weather=context.weather,
+            live_rail_used=context.live_rail_used,
+            rail_options=context.rail_options,
+            rail_fallback_legs=context.rail_fallback_legs,
+            live_flight_used=context.live_flight_used,
+            flight_options=context.flight_options,
+            flight_fallback_legs=context.flight_fallback_legs,
+            fallback_reason=context.fallback_reason,
+            lodging_candidates=context.lodging_candidates,
+        )
+
+    async def plan_alternatives(self, request: TripRequest) -> HybridAlternativeSet:
+        context = await self.prepare(request)
+        alternatives = tuple(
+            self.plan_from_context(context, objective=objective)
+            for objective in (
+                PlanningObjective.BUDGET,
+                PlanningObjective.BALANCED,
+                PlanningObjective.TIME,
+            )
+        )
+        return HybridAlternativeSet(request=request, alternatives=alternatives)
 
     def _record_metrics(self, result: HybridPlanResult, started: float) -> None:
         if self._metrics is None:

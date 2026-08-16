@@ -14,6 +14,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from tripweaver.agent import AgentRunStatus, ControlledTravelAgent
+from tripweaver.application.alternatives_service import AlternativeTripPlanningService
 from tripweaver.application.hybrid_service import HybridTripPlanningService
 from tripweaver.application.service import TripPlanningService
 from tripweaver.config import (
@@ -53,6 +54,12 @@ def build_parser() -> argparse.ArgumentParser:
     plan.add_argument("request", help="natural-language request")
     plan.add_argument("--json", action="store_true", help="emit the complete JSON model")
 
+    alternatives = subparsers.add_parser(
+        "alternatives", help="compare budget, balanced, and time-oriented fixture plans"
+    )
+    alternatives.add_argument("request", help="natural-language request")
+    alternatives.add_argument("--json", action="store_true", help="emit all alternatives")
+
     live_plan = subparsers.add_parser(
         "plan-live",
         help="plan with live AMap, railway, flights, and explicit fallbacks",
@@ -66,7 +73,7 @@ def build_parser() -> argparse.ArgumentParser:
     agent.add_argument("request", help="natural-language request with all hard constraints")
     agent.add_argument("--json", action="store_true", help="emit the complete agent run")
 
-    evaluate = subparsers.add_parser("evaluate", help="run the fixed 40-case offline suite")
+    evaluate = subparsers.add_parser("evaluate", help="run the fixed 120-case offline suite")
     evaluate.add_argument("--json", action="store_true", help="emit the complete report")
     evaluate.add_argument("--output", type=Path, help="write the JSON report to this path")
 
@@ -157,6 +164,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_metrics(args)
     if args.command == "cache":
         return _run_cache(args)
+    if args.command == "alternatives":
+        return _run_alternatives(args)
     request_text = DEMO_REQUEST if args.command == "demo" else args.request
     try:
         result = TripPlanningService().plan_text(request_text)
@@ -201,7 +210,7 @@ async def _run_live_plan(args: argparse.Namespace) -> int:
     else:
         _print_summary(
             result.plan.model_dump(mode="python"),
-            banner="TripWeaver · PHASE 10 VERIFIED TRAVEL AGENT",
+            banner="TripWeaver · PHASE 11 MULTI-CITY FOUNDATION",
         )
         cache_label = "缓存命中" if result.cache_hit else None
         print(
@@ -269,7 +278,7 @@ def _run_evaluation(args: argparse.Namespace) -> int:
     if args.json:
         print(document)
     else:
-        print("TripWeaver · 40-CASE EVALUATION")
+        print("TripWeaver · 120-CASE EVALUATION")
         print(f"通过: {report.passed_cases}/{report.total_cases}")
         print(f"硬约束满足率: {report.hard_constraint_satisfaction_rate:.1%}")
         print(f"来源完整率: {report.source_completeness_rate:.1%}")
@@ -294,6 +303,33 @@ def _run_cache(args: argparse.Namespace) -> int:
     deleted = SQLitePlanCache(settings.database_path, settings.cache_ttl_seconds).clear()
     print(f"已清除 {deleted} 条 TripWeaver 方案缓存。")
     return 0
+
+
+def _run_alternatives(args: argparse.Namespace) -> int:
+    try:
+        result = AlternativeTripPlanningService().plan_text(args.request)
+    except (
+        NoFeasiblePlanError,
+        RequestParseError,
+        UnsupportedFixtureRouteError,
+        ValidationError,
+        ValueError,
+    ) as error:
+        print(f"TripWeaver alternatives error: {error}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(result.model_dump_json(indent=2))
+        return 0
+    print("TripWeaver · MULTI-OBJECTIVE ALTERNATIVES")
+    print("=" * 44)
+    for index, plan in enumerate(result.alternatives, start=1):
+        itinerary = plan.itinerary
+        print(
+            f"{index}. {itinerary.title} | {itinerary.outbound.mode.value}/"
+            f"{itinerary.inbound.mode.value} | {itinerary.lodging_area.name} | "
+            f"CNY {_money(itinerary.budget.total_cny)}"
+        )
+    return 0 if all(plan.validation.feasible for plan in result.alternatives) else 1
 
 
 async def _run_amap(args: argparse.Namespace) -> int:

@@ -48,7 +48,7 @@ class _SQLiteStore:
 class SQLitePlanCache(_SQLiteStore):
     """A schema-versioned TTL cache for normalized, already-validated plans."""
 
-    SCHEMA_VERSION = "hybrid-plan-v1"
+    SCHEMA_VERSION = "hybrid-plan-v2"
 
     def __init__(self, path: Path, ttl_seconds: int = 90) -> None:
         super().__init__(path)

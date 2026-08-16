@@ -66,9 +66,17 @@ class FixtureVerticalSliceTests(unittest.TestCase):
         with self.assertRaises(NoFeasiblePlanError):
             self.service.plan_text("从北京去上海玩3天，2026-10-01出发，2个人，预算1000元")
 
-    def test_rejects_routes_outside_fixture_scope(self) -> None:
+    def test_rejects_unsupported_city(self) -> None:
         with self.assertRaises(UnsupportedFixtureRouteError):
-            self.service.plan_text("从北京去广州玩3天，2个人，预算5000元")
+            self.service.plan_text("从北京去拉萨玩3天，2个人，预算5000元")
+
+    def test_supports_a_second_city_pair(self) -> None:
+        result = self.service.plan_text("从广州去成都玩4天，2026-10-01出发，2个人，预算10000元")
+
+        self.assertTrue(result.validation.feasible)
+        self.assertEqual(result.request.origin, "广州")
+        self.assertEqual(result.request.destination, "成都")
+        self.assertEqual(len(result.itinerary.days), 4)
 
     def test_validator_detects_tampered_budget(self) -> None:
         result = self.service.plan_text(DEMO)

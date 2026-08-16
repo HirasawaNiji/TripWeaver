@@ -38,8 +38,8 @@ class TripPlanningService:
         itinerary, places = self._planner.plan(request)
         report = self._validator.validate(request, itinerary, places)
         warnings = (
-            "当前结果全部来自 Fixture/估算数据，不代表实时班次、票价、营业时间或房价。",
-            "阶段一仅用于架构演示和自动化测试，不提供登录、抢票、预订或下单能力。",
+            "当前多城市结果全部来自 Fixture/估算数据，不代表实时班次、票价、营业时间或房价。",
+            "Fixture 模式用于架构演示和自动化测试，不提供登录、抢票、预订或下单能力。",
         )
         return PlanResult(
             request=request,

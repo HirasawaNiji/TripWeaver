@@ -17,6 +17,8 @@ from tripweaver.domain.models import (
     Itinerary,
     LodgingArea,
     Place,
+    PlanningObjective,
+    PlanningOverrides,
     RouteLeg,
     ScheduledVisit,
     TransportLeg,
@@ -38,11 +40,22 @@ class NoFeasiblePlanError(RuntimeError):
 class DeterministicPlanner:
     """Create a stable itinerary from normalized fixture data."""
 
-    def __init__(self, catalog: PlanningCatalog) -> None:
+    def __init__(
+        self,
+        catalog: PlanningCatalog,
+        *,
+        objective: PlanningObjective = PlanningObjective.BALANCED,
+        overrides: PlanningOverrides | None = None,
+    ) -> None:
         self._catalog = catalog
+        self._objective = objective
+        self._overrides = overrides or PlanningOverrides()
 
     def plan(self, request: TripRequest) -> tuple[Itinerary, tuple[Place, ...]]:
-        places = self._catalog.places(request.destination)
+        excluded = set(self._overrides.excluded_place_ids)
+        places = tuple(
+            place for place in self._catalog.places(request.destination) if place.id not in excluded
+        )
         options = self._catalog.transport_options(request)
         lodging_areas = self._catalog.lodging_areas(request.destination)
         outbound = self._choose_transport(options, request, TransportLeg.OUTBOUND)
@@ -54,10 +67,13 @@ class DeterministicPlanner:
             raise NoFeasiblePlanError(
                 f"最低当前方案预计 {budget.total_cny} 元，超过预算 {request.budget_cny} 元"
             )
-        plan_id = self._stable_plan_id(request, outbound, inbound, lodging)
+        plan_id = self._stable_plan_id(request, outbound, inbound, lodging, self._objective)
         itinerary = Itinerary(
             id=plan_id,
-            title=f"{request.origin}到{request.destination}{request.trip_days}日可验证行程",
+            title=(
+                f"{request.origin}到{request.destination}{request.trip_days}日"
+                f"{self._objective.value}可验证行程"
+            ),
             outbound=outbound,
             inbound=inbound,
             lodging_area=lodging,
@@ -66,28 +82,50 @@ class DeterministicPlanner:
         )
         return itinerary, places
 
-    @staticmethod
     def _choose_transport(
-        options: tuple[TransportOption, ...], request: TripRequest, leg: TransportLeg
+        self,
+        options: tuple[TransportOption, ...],
+        request: TripRequest,
+        leg: TransportLeg,
     ) -> TransportOption:
+        leg_modes = (
+            self._overrides.outbound_modes
+            if leg == TransportLeg.OUTBOUND
+            else self._overrides.inbound_modes
+        )
+        permitted_modes = leg_modes or request.preferred_transport
         allowed = [
             option
             for option in options
             if option.leg == leg
-            and option.mode in request.preferred_transport
+            and option.mode in permitted_modes
             and DeterministicPlanner.transport_window_feasible(option, request, leg)
         ]
         if not allowed:
             raise NoFeasiblePlanError(f"没有同时满足交通偏好和首末日活动窗口的 {leg.value} 方案")
+        fixed_id = (
+            self._overrides.fixed_outbound_id
+            if leg == TransportLeg.OUTBOUND
+            else self._overrides.fixed_inbound_id
+        )
+        if fixed_id is not None:
+            fixed = tuple(option for option in allowed if option.id == fixed_id)
+            if not fixed:
+                raise NoFeasiblePlanError(f"用户固定的 {leg.value} 交通候选当前不可用")
+            return fixed[0]
         return min(
             allowed,
-            key=lambda item: (
-                item.price_per_person_cny * request.travelers
-                + Decimal(item.duration_minutes + generalized_overhead_minutes(item.mode))
-                * Decimal("0.35"),
-                item.id,
-            ),
+            key=lambda item: (self._transport_score(item, request), item.id),
         )
+
+    def _transport_score(self, option: TransportOption, request: TripRequest) -> Decimal:
+        fare = option.price_per_person_cny * request.travelers
+        minutes = Decimal(option.duration_minutes + generalized_overhead_minutes(option.mode))
+        if self._objective == PlanningObjective.BUDGET:
+            return fare + minutes * Decimal("0.12")
+        if self._objective == PlanningObjective.TIME:
+            return fare * Decimal("0.01") + minutes
+        return fare + minutes * Decimal("0.35")
 
     @staticmethod
     def transport_window_feasible(
@@ -123,13 +161,29 @@ class DeterministicPlanner:
         if not areas:
             raise NoFeasiblePlanError("没有可用住宿区域")
 
+        allowed = tuple(
+            area
+            for area in areas
+            if self._overrides.max_nightly_price_cny is None
+            or area.nightly_price_estimate_cny <= self._overrides.max_nightly_price_cny
+        )
+        if self._overrides.fixed_lodging_id is not None:
+            allowed = tuple(area for area in allowed if area.id == self._overrides.fixed_lodging_id)
+        if not allowed:
+            raise NoFeasiblePlanError("没有满足用户确认条件的住宿区域")
+
         def score(area: LodgingArea) -> Decimal:
             route_minutes = sum(
                 self._catalog.route(area.id, area.location, place).minutes for place in places[:4]
             )
-            return area.nightly_price_estimate_cny + Decimal(route_minutes * 2)
+            route_score = Decimal(route_minutes)
+            if self._objective == PlanningObjective.BUDGET:
+                return area.nightly_price_estimate_cny + route_score * Decimal("0.5")
+            if self._objective == PlanningObjective.TIME:
+                return area.nightly_price_estimate_cny * Decimal("0.01") + route_score
+            return area.nightly_price_estimate_cny + route_score * 3
 
-        return min(areas, key=lambda area: (score(area), area.id))
+        return min(allowed, key=lambda area: (score(area), area.id))
 
     def _schedule_days(
         self,
@@ -264,6 +318,7 @@ class DeterministicPlanner:
         outbound: TransportOption,
         inbound: TransportOption,
         lodging: LodgingArea,
+        objective: PlanningObjective,
     ) -> str:
         raw = "|".join(
             (
@@ -276,6 +331,7 @@ class DeterministicPlanner:
                 outbound.id,
                 inbound.id,
                 lodging.id,
+                objective.value,
             )
         )
         return f"tw-{sha256(raw.encode('utf-8')).hexdigest()[:12]}"

@@ -253,6 +253,7 @@ class AmapPlanningSnapshotBuilder:
             McpGatewayError,
             ValidationError,
             ValueError,
+            LookupError,
         ) as error:
             return _HydrationOutcome(
                 place=None,
