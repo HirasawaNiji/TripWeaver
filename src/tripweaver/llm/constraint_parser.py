@@ -57,14 +57,14 @@ class DeterministicConstraintParser:
         )
         assumptions = [date_assumption] if date_assumption else []
         if not self._days_pattern.search(normalized):
-            assumptions.append("未识别到旅行天数，阶段一默认按 3 天规划")
+            assumptions.append("未识别到旅行天数，演示模式默认按 3 天规划")
         if not self._travelers_pattern.search(normalized):
-            assumptions.append("未识别到出行人数，阶段一默认按 2 人规划")
+            assumptions.append("未识别到出行人数，演示模式默认按 2 人规划")
         if not self._budget_pattern.search(normalized):
-            assumptions.append("未识别到预算，阶段一默认预算为 5000 元")
+            assumptions.append("未识别到预算，演示模式默认预算为 5000 元")
         if not interests:
             interests = ("历史文化", "城市景观", "美食街区")
-            assumptions.append("未识别到兴趣偏好，使用阶段一默认综合偏好")
+            assumptions.append("未识别到兴趣偏好，使用演示模式默认综合偏好")
 
         preferred = self._parse_transport_preferences(normalized)
         return TripRequest(

@@ -118,6 +118,19 @@ class McpSdkContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.source.provider, "contract")
         self.assertIn(response.trace_id, response.source.source_reference)
 
+    async def test_adapter_reuses_normalized_query_until_ttl_expires(self) -> None:
+        adapter = McpAdapter(self.gateway, "contract")
+        first = await adapter.call_and_validate(
+            "echo", {"message": "cached"}, EchoPayload, ttl=timedelta(minutes=5)
+        )
+        trace_count = len(self.gateway.traces())
+        second = await adapter.call_and_validate(
+            "echo", {"message": "cached"}, EchoPayload, ttl=timedelta(minutes=5)
+        )
+        self.assertEqual(first.data, second.data)
+        self.assertEqual(second.source.status, DataStatus.CACHED)
+        self.assertEqual(len(self.gateway.traces()), trace_count)
+
     async def test_adapter_rejects_incompatible_structured_output(self) -> None:
         adapter = McpAdapter(self.gateway, "contract")
 

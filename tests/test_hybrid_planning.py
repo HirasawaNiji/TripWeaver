@@ -4,7 +4,9 @@ import unittest
 from datetime import UTC, date, datetime, timedelta
 
 from tripweaver.application.hybrid_service import HybridTripPlanningService
+from tripweaver.conversation import HybridConversationPlanningService
 from tripweaver.domain.models import DataStatus, GeoPoint, SourceMetadata
+from tripweaver.llm.constraint_parser import DeterministicConstraintParser
 from tripweaver.planner.live_snapshot import AmapPlanningSnapshotBuilder
 from tripweaver.providers.amap import (
     AmapForecast,
@@ -145,7 +147,53 @@ class _OutOfRangeWeatherProvider(_StableMapProvider):
         return weather.model_copy(update={"forecasts": (forecast,)})
 
 
+class _CountingMapProvider(_StableMapProvider):
+    def __init__(self) -> None:
+        self.search_count = 0
+
+    async def search_places(
+        self,
+        keywords: str,
+        *,
+        city: str | None = None,
+        city_limit: bool = True,
+        limit: int = 10,
+    ) -> tuple[AmapPlaceSummary, ...]:
+        self.search_count += 1
+        return await super().search_places(
+            keywords, city=city, city_limit=city_limit, limit=limit
+        )
+
+
 class HybridPlanningTests(unittest.IsolatedAsyncioTestCase):
+    async def test_hybrid_conversation_revisions_do_not_refetch_providers(self) -> None:
+        provider = _CountingMapProvider()
+        hybrid = HybridTripPlanningService(AmapPlanningSnapshotBuilder(provider))
+        request = DeterministicConstraintParser().parse(DEMO)
+        conversations = HybridConversationPlanningService(hybrid)
+
+        created = await conversations.create(request)
+        fetch_count = provider.search_count
+        conversations.select(created.id, 2)
+        revised = conversations.revise(created.id, "第二天第一个景点换掉")
+
+        self.assertEqual(provider.search_count, fetch_count)
+        self.assertEqual(revised.data_fetch_count, 1)
+        self.assertEqual(revised.revision_count, 1)
+
+    async def test_three_alternatives_share_one_provider_snapshot(self) -> None:
+        provider = _CountingMapProvider()
+        service = HybridTripPlanningService(AmapPlanningSnapshotBuilder(provider))
+        request = DeterministicConstraintParser().parse(DEMO)
+
+        result = await service.plan_alternatives(request)
+
+        self.assertEqual(len(result.alternatives), 3)
+        self.assertEqual(result.data_fetch_count, 1)
+        # Four attraction searches plus one hotel search, once—not once per plan.
+        self.assertEqual(provider.search_count, 5)
+        self.assertEqual(len({item.plan.itinerary.id for item in result.alternatives}), 3)
+
     async def test_live_snapshot_drives_deterministic_planner(self) -> None:
         service = HybridTripPlanningService(AmapPlanningSnapshotBuilder(_StableMapProvider()))
 

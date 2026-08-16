@@ -1,5 +1,5 @@
 """Reproducible offline evaluation suite."""
 
-from .runner import EvaluationReport, EvaluationRunner, default_cases
+from .runner import EvaluationCategory, EvaluationReport, EvaluationRunner, default_cases
 
-__all__ = ["EvaluationReport", "EvaluationRunner", "default_cases"]
+__all__ = ["EvaluationCategory", "EvaluationReport", "EvaluationRunner", "default_cases"]

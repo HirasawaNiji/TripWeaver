@@ -16,6 +16,44 @@ class ConfigurationError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class DeepSeekSettings:
+    """Optional DeepSeek interpreter; secrets are never logged or persisted."""
+
+    api_key: str = field(default="", repr=False)
+    model: str = "deepseek-v4-flash"
+    base_url: str = "https://api.deepseek.com"
+    enabled: bool = False
+
+    @classmethod
+    def from_env(
+        cls,
+        *,
+        environ: Mapping[str, str] | None = None,
+        env_file: Path | None = None,
+    ) -> DeepSeekSettings:
+        source = os.environ if environ is None else environ
+        configured_path = source.get("TRIPWEAVER_ENV_FILE")
+        file_values = _read_dotenv(env_file or Path(configured_path or ".env"))
+
+        def value(name: str, default: str | None = None) -> str | None:
+            return source.get(name, file_values.get(name, default))
+
+        api_key = (value("DEEPSEEK_API_KEY") or "").strip()
+        enabled = _read_bool("DEEPSEEK_ENABLED", value("DEEPSEEK_ENABLED", "false"))
+        if enabled and not api_key:
+            raise ConfigurationError(
+                "DEEPSEEK_API_KEY is required when DEEPSEEK_ENABLED=true"
+            )
+        model = (value("DEEPSEEK_MODEL", "deepseek-v4-flash") or "").strip()
+        if not re.fullmatch(r"[a-zA-Z0-9._-]{2,80}", model):
+            raise ConfigurationError("DEEPSEEK_MODEL contains invalid characters")
+        base_url = (value("DEEPSEEK_BASE_URL", "https://api.deepseek.com") or "").strip()
+        if not re.fullmatch(r"https://[a-zA-Z0-9.-]+(?::\d{1,5})?(?:/[a-zA-Z0-9._/-]*)?", base_url):
+            raise ConfigurationError("DEEPSEEK_BASE_URL must be a valid HTTPS URL")
+        return cls(api_key=api_key, model=model, base_url=base_url.rstrip("/"), enabled=enabled)
+
+
+@dataclass(frozen=True)
 class AmapSettings:
     """Runtime policy for the official AMap Streamable HTTP MCP server."""
 

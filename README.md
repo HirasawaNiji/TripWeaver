@@ -2,7 +2,7 @@
 
 TripWeaver 是一个基于 MCP 的多源约束旅行规划 Agent。它的目标不是让大模型自由生成攻略，而是把交通、地图、住宿和用户约束转换成一份有来源、可计算、可验证的结构化行程。
 
-> 当前版本是 Phase 10 Portfolio MVP。`agent` 会在硬约束完整后调用高德、12306 社区 MCP 和飞常准 MCP，使用确定性 Planner 与独立 Validator 生成可执行方案；住宿价格、门票及复杂营业规则仍明确标注用户输入、Fixture 或估算，绝不伪装成全实时预订系统。
+> 当前版本是 `3.0.0` / Phase 19 Interactive Portfolio Release。TripWeaver 覆盖 10 城市、多源实时快照、三目标候选方案、OpenAI Structured Outputs、对话式局部重规划、完整 Web 工作台、120 案例评测与工程化交付。
 
 ## Phase 1 已实现
 
@@ -112,6 +112,42 @@ TripWeaver 是一个基于 MCP 的多源约束旅行规划 Agent。它的目标�
 - Pydantic 严格请求/响应模型与安全错误边界
 - 项目版本升级为 `1.0.0`
 
+## Phase 11 已实现
+
+- 共享城市注册表覆盖北京、上海、广州、深圳、杭州、南京、成都、重庆、西安和武汉
+- 城市别名、IATA 城市码、高德 adcode 和中心坐标统一管理
+- 10 城市各提供 6 个带来源的 Fixture 景点种子和 2 个住宿区域
+- Fixture 交通按城市距离确定性生成，不再绑定北京—上海
+- 飞常准城市映射扩展到全部 10 城市；12306 原生接受通用中文城市名
+- 保留京沪旧 Fixture ID，确保 Phase 5/6 Provider 替换契约不回归
+- 支持 `BUDGET / BALANCED / TIME` 三种目标函数
+- `PlanningOverrides` 支持固定去返程、固定住宿、房价上限和排除景点
+- 新增 `alternatives` CLI，从同一数据快照生成三套可验证方案
+
+## Phase 12–15 已实现
+
+- 方案会话支持三选一、自然语言修改、局部重规划和结构化 `PlanDiff`
+- 未被修改的去程、返程和住宿自动锁定，修改景点时不重复查询 MCP
+- 确定性修改解析器覆盖交通、酒店价格、规划目标、方案选择和按日替换
+- Prompt Injection 防线阻止读取环境变量、泄露系统提示词和绕过 Validator
+- 可选 OpenAI Structured Outputs 解释器严格输出到同一 `RevisionIntent` 白名单
+- 地图、铁路和航班只获取一次并冻结，同一快照生成预算、均衡、时间三套方案
+- MCP Adapter 按工具参数与 TTL 缓存规范化查询，命中来源标记为 `CACHED`
+- FastAPI v2 会话接口与内置响应式 Web Demo，展示方案卡片、Diff 和事件时间线
+- 120 组离线评测覆盖 10 城市、可行/不可行预算、重规划保留率与安全拒绝率
+- GitHub Actions、Docker、Compose、贡献指南、变更日志和架构文档
+
+## Phase 16–19 已实现
+
+- OpenAI Responses API 同时接入初始需求、修改意图、澄清问题和行程解释
+- 所有 LLM 输出经过 Pydantic Schema；失败时自动降级到确定性解释器
+- 会话记录模型、输入/输出 Token、延迟、降级状态，但不保存 Key 或原始响应
+- Web 展示逐日景点、起止时间、路线、门票、交通、住宿和完整预算
+- 支持景点快捷替换、交通/住宿锁定、撤销和版本历史
+- 内置双栏 Agent 工作台、修改 Diff、事件时间线和模型运行统计
+- 内置无额外网络依赖的 SVG 行程地图、预算图表和来源可信度面板
+- 三组一键演示案例、完全离线 Fixture 模式、API/UI 端到端测试和发布检查清单
+
 ## 快速开始
 
 需要 Python 3.12+。推荐使用 `uv`：
@@ -157,10 +193,12 @@ uv run tripweaver aviation search 2026-08-20 BJS SHA --limit 10 --json
 
 真实 Key 只写入不提交的 `.env`，变量名和运行策略参考 `.env.example`。
 
-也可以规划阶段一支持的中文请求：
+也可以规划受支持格式的中文请求：
 
 ```powershell
 uv run tripweaver plan "从北京去上海玩3天，2026-10-01出发，2个人，预算5000元，喜欢历史文化和城市夜景"
+uv run tripweaver plan "从广州去成都玩4天，2026-10-01出发，2个人，预算10000元，喜欢历史文化和美食街区"
+uv run tripweaver alternatives "从广州去成都玩4天，2026-10-01出发，2个人，预算10000元，高铁或飞机都可以"
 ```
 
 使用高德实时地图与只读铁路数据生成混合可验证行程：
@@ -185,25 +223,39 @@ uv run tripweaver metrics
 uv run uvicorn tripweaver.api:app --host 127.0.0.1 --port 8000
 ```
 
-接口文档启动后位于 `http://127.0.0.1:8000/docs`。
+Web Demo 位于 `http://127.0.0.1:8000/`，接口文档位于 `http://127.0.0.1:8000/docs`。
+
+启用可选 LLM：
+
+```dotenv
+DEEPSEEK_ENABLED=true
+DEEPSEEK_API_KEY=your_deepseek_api_key_here
+DEEPSEEK_MODEL=deepseek-v4-flash
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+```
+
+未配置或调用失败时，系统自动回退到确定性解析和解释，规划器与 Validator 行为不变。
+
+语言边界使用 [DeepSeek JSON Output](https://api-docs.deepseek.com/zh-cn/guides/json_mode)，并在本地通过 Pydantic Schema 严格校验；LLM 不拥有 MCP 工具调用、关键计算或 Validator 绕过权限。
 
 运行测试：
 
 ```powershell
-$env:PYTHONPATH = "src"
-uv run python -m unittest discover -s tests -v
+uv run pytest -q
+uv run ruff check src tests
+uv run pyright
 ```
 
 ## 当前边界
 
-- 仅支持北京到上海、1–7 天的 Fixture 往返行程
-- 解析器不是 LLM，只覆盖 README 中演示的有限中文格式
+- 当前支持 10 个注册城市之间的 1–7 天往返行程；尚不支持注册表外城市
+- 默认解析器是确定性的有限中文语法；配置 `DEEPSEEK_ENABLED=true` 后可使用可选结构化 LLM 解释器
 - `plan` 和 `demo` 不访问实时服务；`amap`、`railway`、`aviation` 与 `plan-live` 才访问外部 MCP
 - 12306 数据来自社区项目而非铁路官方发布，接口变化、限流和可用性风险必须显式处理
 - 飞常准最低舱位价可能不含税费，且机场往返市区费用尚未进入预算
 - 酒店位置与评分来自高德，但尚未接入任何 OTA 实时房型和房价服务
 - 不登录、不抢票、不预订、不下单
-- 已提供 FastAPI，但尚未提供 Web UI、身份认证和公网部署配置
+- Web UI 与 API 面向本地作品集演示；未实现身份认证和公网生产部署策略
 - 高德复杂营业日历尚未自动转成硬约束，当前保留原文并使用规划基线
 - 高德不提供可靠门票和推荐游玩时长，相关字段保持估算
 - 方案缓存和聚合运行指标已持久化；MCP 工具发现缓存与健康状态仍为进程内数据
@@ -214,6 +266,6 @@ uv run python -m unittest discover -s tests -v
 
 结构化 `PlanResult` 是事实来源。后续接入 LLM 时，LLM 只能解析请求和解释已验证结果，不负责关键算术与可行性判断。
 
-更多说明见 `docs/` 下的 Phase 1–10 文档。
+更多说明见 `docs/` 下的阶段文档与 `docs/ARCHITECTURE_V2.md`。
 
 MCP Gateway 基于官方 [MCP Python SDK v2](https://github.com/modelcontextprotocol/python-sdk)。

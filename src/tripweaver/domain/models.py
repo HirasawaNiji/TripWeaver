@@ -6,7 +6,9 @@ from datetime import date, datetime, time
 from decimal import Decimal
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
+
+from tripweaver.domain.cities import canonical_city_name
 
 
 class DomainModel(BaseModel):
@@ -23,6 +25,17 @@ class DataStatus(StrEnum):
     UNAVAILABLE = "UNAVAILABLE"
 
 
+class ModelCallMetadata(DomainModel):
+    provider: str
+    model: str
+    mode: str
+    input_tokens: int = Field(default=0, ge=0)
+    output_tokens: int = Field(default=0, ge=0)
+    latency_ms: float = Field(default=0, ge=0)
+    fallback_used: bool = False
+    error_type: str | None = None
+
+
 class Severity(StrEnum):
     ERROR = "ERROR"
     WARNING = "WARNING"
@@ -36,6 +49,12 @@ class TransportMode(StrEnum):
 class TransportLeg(StrEnum):
     OUTBOUND = "OUTBOUND"
     RETURN = "RETURN"
+
+
+class PlanningObjective(StrEnum):
+    BUDGET = "BUDGET"
+    BALANCED = "BALANCED"
+    TIME = "TIME"
 
 
 class SourceMetadata(DomainModel):
@@ -62,18 +81,37 @@ class TripRequest(DomainModel):
     )
     assumptions: tuple[str, ...] = ()
 
+    @field_validator("origin", "destination")
+    @classmethod
+    def normalize_city(cls, value: str) -> str:
+        return canonical_city_name(value)
+
     @model_validator(mode="after")
     def validate_dates(self) -> TripRequest:
+        if self.origin == self.destination:
+            raise ValueError("origin and destination must be different")
         if self.end_date < self.start_date:
             raise ValueError("end_date must not be before start_date")
         if self.trip_days > 7:
-            raise ValueError("phase-one trips are limited to seven days")
+            raise ValueError("trips are limited to seven days")
         return self
 
     @computed_field
     @property
     def trip_days(self) -> int:
         return (self.end_date - self.start_date).days + 1
+
+
+class PlanningOverrides(DomainModel):
+    """User-confirmed choices retained across local replanning turns."""
+
+    fixed_outbound_id: str | None = None
+    fixed_inbound_id: str | None = None
+    fixed_lodging_id: str | None = None
+    excluded_place_ids: tuple[str, ...] = ()
+    max_nightly_price_cny: Decimal | None = Field(default=None, gt=0)
+    outbound_modes: tuple[TransportMode, ...] | None = None
+    inbound_modes: tuple[TransportMode, ...] | None = None
 
 
 class TransportOption(DomainModel):

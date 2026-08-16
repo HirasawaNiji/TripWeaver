@@ -7,6 +7,7 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 
 from tripweaver.config import VariflightSettings
+from tripweaver.domain.cities import CITY_REGISTRY
 from tripweaver.domain.models import TransportLeg, TransportMode, TransportOption
 from tripweaver.mcp_gateway import (
     McpAdapter,
@@ -27,10 +28,7 @@ from tripweaver.providers.aviation.models import (
 VARIFLIGHT_SERVER_NAME = "variflight"
 VARIFLIGHT_REQUIRED_TOOLS = frozenset({"getFlightPriceByCities", "getFutureWeatherByAirport"})
 CITY_IATA_CODES = {
-    "北京": "BJS",
-    "北京市": "BJS",
-    "上海": "SHA",
-    "上海市": "SHA",
+    alias: city.iata_code for city in CITY_REGISTRY for alias in (city.name, *city.aliases)
 }
 _CHINA_TIMEZONE = timezone(timedelta(hours=8))
 
