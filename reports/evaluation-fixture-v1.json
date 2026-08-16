@@ -1,0 +1,414 @@
+{
+  "suite": "tripweaver-fixture-v1",
+  "total_cases": 40,
+  "passed_cases": 40,
+  "expected_outcome_accuracy": 1.0,
+  "hard_constraint_satisfaction_rate": 1.0,
+  "infeasible_plan_rate": 0.2,
+  "source_completeness_rate": 1.0,
+  "deterministic_stability_rate": 1.0,
+  "average_latency_ms": 1.150000000052387,
+  "token_cost": 0,
+  "cases": [
+    {
+      "id": "fixture-01",
+      "passed": true,
+      "feasible": false,
+      "validator_passed": true,
+      "deterministic": true,
+      "source_complete": true,
+      "latency_ms": 0.0,
+      "failure_type": "NoFeasiblePlanError"
+    },
+    {
+      "id": "fixture-02",
+      "passed": true,
+      "feasible": true,
+      "validator_passed": true,
+      "deterministic": true,
+      "source_complete": true,
+      "latency_ms": 0.0,
+      "failure_type": null
+    },
+    {
+      "id": "fixture-03",
+      "passed": true,
+      "feasible": true,
+      "validator_passed": true,
+      "deterministic": true,
+      "source_complete": true,
+      "latency_ms": 0.0,
+      "failure_type": null
+    },
+    {
+      "id": "fixture-04",
+      "passed": true,
+      "feasible": true,
+      "validator_passed": true,
+      "deterministic": true,
+      "source_complete": true,
+      "latency_ms": 0.0,
+      "failure_type": null
+    },
+    {
+      "id": "fixture-05",
+      "passed": true,
+      "feasible": true,
+      "validator_passed": true,
+      "deterministic": true,
+      "source_complete": true,
+      "latency_ms": 0.0,
+      "failure_type": null
+    },
+    {
+      "id": "fixture-06",
+      "passed": true,
+      "feasible": false,
+      "validator_passed": true,
+      "deterministic": true,
+      "source_complete": true,
+      "latency_ms": 0.0,
+      "failure_type": "NoFeasiblePlanError"
+    },
+    {
+      "id": "fixture-07",
+      "passed": true,
+      "feasible": true,
+      "validator_passed": true,
+      "deterministic": true,
+      "source_complete": true,
+      "latency_ms": 0.0,
+      "failure_type": null
+    },
+    {
+      "id": "fixture-08",
+      "passed": true,
+      "feasible": true,
+      "validator_passed": true,
+      "deterministic": true,
+      "source_complete": true,
+      "latency_ms": 0.0,
+      "failure_type": null
+    },
+    {
+      "id": "fixture-09",
+      "passed": true,
+      "feasible": true,
+      "validator_passed": true,
+      "deterministic": true,
+      "source_complete": true,
+      "latency_ms": 0.0,
+      "failure_type": null
+    },
+    {
+      "id": "fixture-10",
+      "passed": true,
+      "feasible": true,
+      "validator_passed": true,
+      "deterministic": true,
+      "source_complete": true,
+      "latency_ms": 14.999999999417923,
+      "failure_type": null
+    },
+    {
+      "id": "fixture-11",
+      "passed": true,
+      "feasible": false,
+      "validator_passed": true,
+      "deterministic": true,
+      "source_complete": true,
+      "latency_ms": 0.0,
+      "failure_type": "NoFeasiblePlanError"
+    },
+    {
+      "id": "fixture-12",
+      "passed": true,
+      "feasible": true,
+      "validator_passed": true,
+      "deterministic": true,
+      "source_complete": true,
+      "latency_ms": 0.0,
+      "failure_type": null
+    },
+    {
+      "id": "fixture-13",
+      "passed": true,
+      "feasible": true,
+      "validator_passed": true,
+      "deterministic": true,
+      "source_complete": true,
+      "latency_ms": 0.0,
+      "failure_type": null
+    },
+    {
+      "id": "fixture-14",
+      "passed": true,
+      "feasible": true,
+      "validator_passed": true,
+      "deterministic": true,
+      "source_complete": true,
+      "latency_ms": 0.0,
+      "failure_type": null
+    },
+    {
+      "id": "fixture-15",
+      "passed": true,
+      "feasible": true,
+      "validator_passed": true,
+      "deterministic": true,
+      "source_complete": true,
+      "latency_ms": 0.0,
+      "failure_type": null
+    },
+    {
+      "id": "fixture-16",
+      "passed": true,
+      "feasible": false,
+      "validator_passed": true,
+      "deterministic": true,
+      "source_complete": true,
+      "latency_ms": 0.0,
+      "failure_type": "NoFeasiblePlanError"
+    },
+    {
+      "id": "fixture-17",
+      "passed": true,
+      "feasible": true,
+      "validator_passed": true,
+      "deterministic": true,
+      "source_complete": true,
+      "latency_ms": 0.0,
+      "failure_type": null
+    },
+    {
+      "id": "fixture-18",
+      "passed": true,
+      "feasible": true,
+      "validator_passed": true,
+      "deterministic": true,
+      "source_complete": true,
+      "latency_ms": 0.0,
+      "failure_type": null
+    },
+    {
+      "id": "fixture-19",
+      "passed": true,
+      "feasible": true,
+      "validator_passed": true,
+      "deterministic": true,
+      "source_complete": true,
+      "latency_ms": 0.0,
+      "failure_type": null
+    },
+    {
+      "id": "fixture-20",
+      "passed": true,
+      "feasible": true,
+      "validator_passed": true,
+      "deterministic": true,
+      "source_complete": true,
+      "latency_ms": 0.0,
+      "failure_type": null
+    },
+    {
+      "id": "fixture-21",
+      "passed": true,
+      "feasible": false,
+      "validator_passed": true,
+      "deterministic": true,
+      "source_complete": true,
+      "latency_ms": 0.0,
+      "failure_type": "NoFeasiblePlanError"
+    },
+    {
+      "id": "fixture-22",
+      "passed": true,
+      "feasible": true,
+      "validator_passed": true,
+      "deterministic": true,
+      "source_complete": true,
+      "latency_ms": 0.0,
+      "failure_type": null
+    },
+    {
+      "id": "fixture-23",
+      "passed": true,
+      "feasible": true,
+      "validator_passed": true,
+      "deterministic": true,
+      "source_complete": true,
+      "latency_ms": 0.0,
+      "failure_type": null
+    },
+    {
+      "id": "fixture-24",
+      "passed": true,
+      "feasible": true,
+      "validator_passed": true,
+      "deterministic": true,
+      "source_complete": true,
+      "latency_ms": 0.0,
+      "failure_type": null
+    },
+    {
+      "id": "fixture-25",
+      "passed": true,
+      "feasible": true,
+      "validator_passed": true,
+      "deterministic": true,
+      "source_complete": true,
+      "latency_ms": 16.00000000325963,
+      "failure_type": null
+    },
+    {
+      "id": "fixture-26",
+      "passed": true,
+      "feasible": false,
+      "validator_passed": true,
+      "deterministic": true,
+      "source_complete": true,
+      "latency_ms": 0.0,
+      "failure_type": "NoFeasiblePlanError"
+    },
+    {
+      "id": "fixture-27",
+      "passed": true,
+      "feasible": true,
+      "validator_passed": true,
+      "deterministic": true,
+      "source_complete": true,
+      "latency_ms": 0.0,
+      "failure_type": null
+    },
+    {
+      "id": "fixture-28",
+      "passed": true,
+      "feasible": true,
+      "validator_passed": true,
+      "deterministic": true,
+      "source_complete": true,
+      "latency_ms": 0.0,
+      "failure_type": null
+    },
+    {
+      "id": "fixture-29",
+      "passed": true,
+      "feasible": true,
+      "validator_passed": true,
+      "deterministic": true,
+      "source_complete": true,
+      "latency_ms": 0.0,
+      "failure_type": null
+    },
+    {
+      "id": "fixture-30",
+      "passed": true,
+      "feasible": true,
+      "validator_passed": true,
+      "deterministic": true,
+      "source_complete": true,
+      "latency_ms": 0.0,
+      "failure_type": null
+    },
+    {
+      "id": "fixture-31",
+      "passed": true,
+      "feasible": false,
+      "validator_passed": true,
+      "deterministic": true,
+      "source_complete": true,
+      "latency_ms": 0.0,
+      "failure_type": "NoFeasiblePlanError"
+    },
+    {
+      "id": "fixture-32",
+      "passed": true,
+      "feasible": true,
+      "validator_passed": true,
+      "deterministic": true,
+      "source_complete": true,
+      "latency_ms": 0.0,
+      "failure_type": null
+    },
+    {
+      "id": "fixture-33",
+      "passed": true,
+      "feasible": true,
+      "validator_passed": true,
+      "deterministic": true,
+      "source_complete": true,
+      "latency_ms": 0.0,
+      "failure_type": null
+    },
+    {
+      "id": "fixture-34",
+      "passed": true,
+      "feasible": true,
+      "validator_passed": true,
+      "deterministic": true,
+      "source_complete": true,
+      "latency_ms": 0.0,
+      "failure_type": null
+    },
+    {
+      "id": "fixture-35",
+      "passed": true,
+      "feasible": true,
+      "validator_passed": true,
+      "deterministic": true,
+      "source_complete": true,
+      "latency_ms": 0.0,
+      "failure_type": null
+    },
+    {
+      "id": "fixture-36",
+      "passed": true,
+      "feasible": false,
+      "validator_passed": true,
+      "deterministic": true,
+      "source_complete": true,
+      "latency_ms": 0.0,
+      "failure_type": "NoFeasiblePlanError"
+    },
+    {
+      "id": "fixture-37",
+      "passed": true,
+      "feasible": true,
+      "validator_passed": true,
+      "deterministic": true,
+      "source_complete": true,
+      "latency_ms": 0.0,
+      "failure_type": null
+    },
+    {
+      "id": "fixture-38",
+      "passed": true,
+      "feasible": true,
+      "validator_passed": true,
+      "deterministic": true,
+      "source_complete": true,
+      "latency_ms": 0.0,
+      "failure_type": null
+    },
+    {
+      "id": "fixture-39",
+      "passed": true,
+      "feasible": true,
+      "validator_passed": true,
+      "deterministic": true,
+      "source_complete": true,
+      "latency_ms": 14.999999999417923,
+      "failure_type": null
+    },
+    {
+      "id": "fixture-40",
+      "passed": true,
+      "feasible": true,
+      "validator_passed": true,
+      "deterministic": true,
+      "source_complete": true,
+      "latency_ms": 0.0,
+      "failure_type": null
+    }
+  ]
+}
