@@ -69,7 +69,8 @@ def test_v2_lock_replace_undo_and_explain_workbench_flow() -> None:
     rejected = client.post(
         f"/v2/sessions/{session_id}/revise", json={"text": "返程不要飞机"}
     )
-    assert rejected.status_code == 422
+    assert rejected.status_code == 409
+    assert rejected.json()["detail"]["code"] == "LOCKED_CONSTRAINT"
 
     client.put(f"/v2/sessions/{session_id}/locks", json={"fields": []})
     place_id = selected["selected_plan"]["itinerary"]["days"][1]["visits"][0][

@@ -37,10 +37,14 @@ class AlternativeTripPlanningService:
         catalog: PlanningCatalog | None = None,
         parser: DeterministicConstraintParser | None = None,
         validator: ItineraryValidator | None = None,
+        data_mode: DataStatus = DataStatus.FIXTURE,
+        warnings: tuple[str, ...] = (),
     ) -> None:
         self._catalog = catalog or FixtureCatalog()
         self._parser = parser or DeterministicConstraintParser()
         self._validator = validator or ItineraryValidator()
+        self._data_mode = data_mode
+        self._warnings = warnings
 
     def plan_text(self, text: str, *, overrides: PlanningOverrides | None = None) -> AlternativeSet:
         return self.plan(self._parser.parse(text), overrides=overrides)
@@ -64,10 +68,11 @@ class AlternativeTripPlanningService:
                     request=request,
                     itinerary=itinerary,
                     validation=validation,
-                    data_mode=DataStatus.FIXTURE,
+                    data_mode=self._data_mode,
                     warnings=(
-                        f"当前为 {objective.value} 目标的多城市 Fixture 对比方案。",
+                        f"当前为 {objective.value} 目标的同源数据对比方案。",
                         "三种目标共享同一数据快照；后续对话可通过 PlanningOverrides 保留用户确认项。",
+                        *self._warnings,
                     ),
                 )
             )

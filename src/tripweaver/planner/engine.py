@@ -10,6 +10,7 @@ from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from hashlib import sha256
 from math import ceil
+from typing import Any
 
 from tripweaver.domain.models import (
     BudgetBreakdown,
@@ -35,6 +36,17 @@ from tripweaver.planner.catalog import PlanningCatalog
 
 class NoFeasiblePlanError(RuntimeError):
     """Raised when hard constraints leave no executable itinerary."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "NO_FEASIBLE_PLAN",
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.code = code
+        self.details = details or {}
 
 
 class DeterministicPlanner:
@@ -65,7 +77,13 @@ class DeterministicPlanner:
         budget = self._calculate_budget(request, outbound, inbound, lodging, days)
         if budget.total_cny > request.budget_cny:
             raise NoFeasiblePlanError(
-                f"最低当前方案预计 {budget.total_cny} 元，超过预算 {request.budget_cny} 元"
+                f"最低当前方案预计 {budget.total_cny} 元，超过预算 {request.budget_cny} 元",
+                code="BUDGET_SHORTFALL",
+                details={
+                    "minimum_cny": budget.total_cny,
+                    "budget_cny": request.budget_cny,
+                    "shortfall_cny": budget.total_cny - request.budget_cny,
+                },
             )
         plan_id = self._stable_plan_id(request, outbound, inbound, lodging, self._objective)
         itinerary = Itinerary(
@@ -102,7 +120,11 @@ class DeterministicPlanner:
             and DeterministicPlanner.transport_window_feasible(option, request, leg)
         ]
         if not allowed:
-            raise NoFeasiblePlanError(f"没有同时满足交通偏好和首末日活动窗口的 {leg.value} 方案")
+            raise NoFeasiblePlanError(
+                f"没有同时满足交通偏好和首末日活动窗口的 {leg.value} 方案",
+                code="TRANSPORT_WINDOW_CONFLICT",
+                details={"leg": leg.value},
+            )
         fixed_id = (
             self._overrides.fixed_outbound_id
             if leg == TransportLeg.OUTBOUND
@@ -111,7 +133,11 @@ class DeterministicPlanner:
         if fixed_id is not None:
             fixed = tuple(option for option in allowed if option.id == fixed_id)
             if not fixed:
-                raise NoFeasiblePlanError(f"用户固定的 {leg.value} 交通候选当前不可用")
+                raise NoFeasiblePlanError(
+                    f"用户固定的 {leg.value} 交通候选当前不可用",
+                    code="FIXED_TRANSPORT_UNAVAILABLE",
+                    details={"leg": leg.value, "fixed_id": fixed_id},
+                )
             return fixed[0]
         return min(
             allowed,
@@ -159,7 +185,9 @@ class DeterministicPlanner:
         self, areas: tuple[LodgingArea, ...], places: tuple[Place, ...]
     ) -> LodgingArea:
         if not areas:
-            raise NoFeasiblePlanError("没有可用住宿区域")
+            raise NoFeasiblePlanError(
+                "没有可用住宿区域", code="LODGING_UNAVAILABLE"
+            )
 
         allowed = tuple(
             area
@@ -170,7 +198,14 @@ class DeterministicPlanner:
         if self._overrides.fixed_lodging_id is not None:
             allowed = tuple(area for area in allowed if area.id == self._overrides.fixed_lodging_id)
         if not allowed:
-            raise NoFeasiblePlanError("没有满足用户确认条件的住宿区域")
+            raise NoFeasiblePlanError(
+                "没有满足用户确认条件的住宿区域",
+                code="LODGING_CONSTRAINT_CONFLICT",
+                details={
+                    "max_nightly_price_cny": self._overrides.max_nightly_price_cny,
+                    "fixed_lodging_id": self._overrides.fixed_lodging_id,
+                },
+            )
 
         def score(area: LodgingArea) -> Decimal:
             route_minutes = sum(
@@ -260,7 +295,11 @@ class DeterministicPlanner:
             )
         if remaining:
             unscheduled = "、".join(place.name for place in remaining)
-            raise NoFeasiblePlanError(f"当前时间窗口无法安排全部候选景点：{unscheduled}")
+            raise NoFeasiblePlanError(
+                f"当前时间窗口无法安排全部候选景点：{unscheduled}",
+                code="SCHEDULE_CAPACITY_CONFLICT",
+                details={"unscheduled_places": tuple(place.name for place in remaining)},
+            )
         return tuple(day_plans)
 
     @staticmethod
@@ -284,7 +323,11 @@ class DeterministicPlanner:
             )
         end = min(end, start + timedelta(minutes=request.max_daily_minutes))
         if end <= start:
-            raise NoFeasiblePlanError(f"{current_date.isoformat()} 没有可用游玩时间")
+            raise NoFeasiblePlanError(
+                f"{current_date.isoformat()} 没有可用游玩时间",
+                code="DAY_WINDOW_CONFLICT",
+                details={"date": current_date.isoformat()},
+            )
         return start, end
 
     def _calculate_budget(

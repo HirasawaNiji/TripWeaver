@@ -13,6 +13,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from tripweaver import __version__
 from tripweaver.agent import AgentRunStatus, ControlledTravelAgent
 from tripweaver.application.alternatives_service import AlternativeTripPlanningService
 from tripweaver.application.hybrid_service import HybridTripPlanningService
@@ -20,16 +21,19 @@ from tripweaver.application.service import TripPlanningService
 from tripweaver.config import (
     AmapSettings,
     ConfigurationError,
+    DeepSeekSettings,
     LodgingSettings,
     RailwaySettings,
     RuntimeSettings,
     VariflightSettings,
 )
 from tripweaver.domain.models import GeoPoint, TransportLeg
-from tripweaver.evaluation import EvaluationRunner
+from tripweaver.evaluation import AgentEvaluationRunner, EvaluationRunner, default_agent_cases
 from tripweaver.fixtures.catalog import UnsupportedFixtureRouteError
 from tripweaver.llm.constraint_parser import RequestParseError
+from tripweaver.llm.runtime import DeepSeekRequestInterpreter, DeepSeekRevisionInterpreter
 from tripweaver.mcp_gateway.errors import McpGatewayError
+from tripweaver.operations import ReadinessReport, inspect_live_readiness, inspect_readiness
 from tripweaver.planner.engine import NoFeasiblePlanError
 from tripweaver.providers.amap import AmapProvider, AmapProviderError
 from tripweaver.providers.aviation import VariflightProvider, VariflightProviderError
@@ -47,7 +51,30 @@ def build_parser() -> argparse.ArgumentParser:
         prog="tripweaver",
         description="TripWeaver deterministic planner and query-only MCP providers",
     )
+    parser.add_argument("--version", action="version", version=f"TripWeaver {__version__}")
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    doctor = subparsers.add_parser(
+        "doctor", help="inspect demo, credential, dependency, and live MCP readiness"
+    )
+    doctor.add_argument("--json", action="store_true", help="emit a redacted JSON report")
+    doctor.add_argument(
+        "--live", action="store_true", help="perform query-only capability discovery"
+    )
+    doctor.add_argument(
+        "--env-file",
+        type=Path,
+        help="environment file to inspect (defaults to TRIPWEAVER_ENV_FILE or .env)",
+    )
+
+    serve = subparsers.add_parser("serve", help="start the local API and Web demo")
+    serve.add_argument(
+        "--host",
+        choices=("127.0.0.1", "0.0.0.0"),
+        default="127.0.0.1",
+        help="bind locally by default; use 0.0.0.0 only for a trusted network",
+    )
+    serve.add_argument("--port", type=_port_argument, default=8000)
     demo = subparsers.add_parser("demo", help="run the Beijing-to-Shanghai fixture demo")
     demo.add_argument("--json", action="store_true", help="emit the complete JSON model")
     plan = subparsers.add_parser("plan", help="plan a supported Chinese request")
@@ -76,6 +103,20 @@ def build_parser() -> argparse.ArgumentParser:
     evaluate = subparsers.add_parser("evaluate", help="run the fixed 120-case offline suite")
     evaluate.add_argument("--json", action="store_true", help="emit the complete report")
     evaluate.add_argument("--output", type=Path, help="write the JSON report to this path")
+
+    evaluate_agent = subparsers.add_parser(
+        "evaluate-agent", help="run the fixed 40-case multi-turn Agent suite"
+    )
+    evaluate_agent.add_argument("--json", action="store_true", help="emit the complete report")
+    evaluate_agent.add_argument("--output", type=Path, help="write the JSON report to this path")
+    evaluate_agent.add_argument(
+        "--live-llm",
+        action="store_true",
+        help="use configured DeepSeek instead of the deterministic language baseline",
+    )
+    evaluate_agent.add_argument(
+        "--limit", type=int, default=40, choices=range(1, 41), help="number of cases"
+    )
 
     metrics = subparsers.add_parser("metrics", help="show durable aggregate run metrics")
     metrics.add_argument("--json", action="store_true", help="emit JSON")
@@ -148,6 +189,10 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     _configure_utf8_stdout()
     args = build_parser().parse_args(argv)
+    if args.command == "doctor":
+        return asyncio.run(_run_doctor(args))
+    if args.command == "serve":
+        return _run_serve(args)
     if args.command == "amap":
         return asyncio.run(_run_amap(args))
     if args.command == "railway":
@@ -160,6 +205,8 @@ def main(argv: list[str] | None = None) -> int:
         return asyncio.run(_run_agent(args))
     if args.command == "evaluate":
         return _run_evaluation(args)
+    if args.command == "evaluate-agent":
+        return _run_agent_evaluation(args)
     if args.command == "metrics":
         return _run_metrics(args)
     if args.command == "cache":
@@ -183,6 +230,46 @@ def main(argv: list[str] | None = None) -> int:
     else:
         _print_summary(result.model_dump(mode="python"))
     return 0 if result.validation.feasible else 1
+
+
+async def _run_doctor(args: argparse.Namespace) -> int:
+    report = (
+        await inspect_live_readiness(env_file=args.env_file)
+        if args.live
+        else inspect_readiness(env_file=args.env_file)
+    )
+    if args.json:
+        print(report.model_dump_json(indent=2))
+    else:
+        _print_readiness(report)
+    return 0 if (report.live_ready if args.live else report.demo_ready) else 1
+
+
+def _run_serve(args: argparse.Namespace) -> int:
+    report = inspect_readiness()
+    if not report.demo_ready:
+        _print_readiness(report)
+        print("TripWeaver cannot start until required DEMO checks pass.", file=sys.stderr)
+        return 3
+    import uvicorn
+
+    print(f"TripWeaver {__version__} · http://{args.host}:{args.port}")
+    uvicorn.run("tripweaver.api:app", host=args.host, port=args.port)
+    return 0
+
+
+def _print_readiness(report: ReadinessReport) -> None:
+    print(f"TripWeaver {report.version} · PHASE 24 READINESS")
+    print("=" * 52)
+    for check in report.checks:
+        print(f"[{check.status.value:4}] {check.label}: {check.detail}")
+    print()
+    print(f"DEMO ready: {'yes' if report.demo_ready else 'no'}")
+    print(
+        f"LIVE ready: {'yes' if report.live_ready else 'no'} "
+        f"({report.provider_ready_count}/{report.provider_total_count} providers configured)"
+    )
+    print(f"LLM ready: {'yes' if report.llm_ready else 'no; deterministic fallback active'}")
 
 
 async def _run_live_plan(args: argparse.Namespace) -> int:
@@ -285,6 +372,38 @@ def _run_evaluation(args: argparse.Namespace) -> int:
         print(f"稳定性: {report.deterministic_stability_rate:.1%}")
         print(f"平均延迟: {report.average_latency_ms:.2f} ms")
         print(f"Token 成本: {report.token_cost}")
+    return 0 if report.passed_cases == report.total_cases else 1
+
+
+def _run_agent_evaluation(args: argparse.Namespace) -> int:
+    if args.live_llm:
+        settings = DeepSeekSettings.from_env()
+        if not settings.enabled:
+            print("TripWeaver agent evaluation error: DeepSeek is disabled", file=sys.stderr)
+            return 3
+        runner = AgentEvaluationRunner(
+            request_interpreter=DeepSeekRequestInterpreter(settings),
+            revision_interpreter=DeepSeekRevisionInterpreter(settings),
+        )
+    else:
+        runner = AgentEvaluationRunner()
+    report = runner.run(default_agent_cases()[: args.limit])
+    document = report.model_dump_json(indent=2)
+    if args.output is not None:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(document + "\n", encoding="utf-8")
+    if args.json:
+        print(document)
+    else:
+        print("TripWeaver · 40-CASE MULTI-TURN AGENT EVALUATION")
+        print(f"通过: {report.passed_cases}/{report.total_cases}")
+        print(f"需求结构化成功率: {report.structured_request_success_rate:.1%}")
+        print(f"修改意图准确率: {report.revision_intent_accuracy:.1%}")
+        print(f"硬约束满足率: {report.hard_constraint_satisfaction_rate:.1%}")
+        print(f"锁定字段保持率: {report.replan_preservation_rate:.1%}")
+        print(f"快照复用率: {report.snapshot_reuse_rate:.1%}")
+        print(f"LLM 降级率: {report.fallback_rate:.1%}")
+        print(f"Token: {report.total_input_tokens + report.total_output_tokens}")
     return 0 if report.passed_cases == report.total_cases else 1
 
 
@@ -508,6 +627,16 @@ def _point_argument(value: str) -> GeoPoint:
         raise argparse.ArgumentTypeError(
             "coordinate must use longitude,latitude within valid bounds"
         ) from error
+
+
+def _port_argument(value: str) -> int:
+    try:
+        port = int(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("port must be an integer") from error
+    if not 1024 <= port <= 65535:
+        raise argparse.ArgumentTypeError("port must be between 1024 and 65535")
+    return port
 
 
 def _print_summary(
