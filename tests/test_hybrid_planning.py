@@ -4,7 +4,7 @@ import unittest
 from datetime import UTC, date, datetime, timedelta
 
 from tripweaver.application.hybrid_service import HybridTripPlanningService
-from tripweaver.conversation import HybridConversationPlanningService
+from tripweaver.conversation import HybridConversationPlanningService, SessionMode
 from tripweaver.domain.models import DataStatus, GeoPoint, SourceMetadata
 from tripweaver.llm.constraint_parser import DeterministicConstraintParser
 from tripweaver.planner.live_snapshot import AmapPlanningSnapshotBuilder
@@ -173,6 +173,9 @@ class HybridPlanningTests(unittest.IsolatedAsyncioTestCase):
         conversations = HybridConversationPlanningService(hybrid)
 
         created = await conversations.create(request)
+        self.assertEqual(created.mode, SessionMode.LIVE)
+        self.assertIsNotNone(created.snapshot)
+        self.assertTrue(created.snapshot.providers if created.snapshot else ())
         fetch_count = provider.search_count
         conversations.select(created.id, 2)
         revised = conversations.revise(created.id, "第二天第一个景点换掉")
@@ -180,6 +183,7 @@ class HybridPlanningTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(provider.search_count, fetch_count)
         self.assertEqual(revised.data_fetch_count, 1)
         self.assertEqual(revised.revision_count, 1)
+        self.assertGreater(conversations.trace_summary(created.id).tool_calls, 0)
 
     async def test_three_alternatives_share_one_provider_snapshot(self) -> None:
         provider = _CountingMapProvider()

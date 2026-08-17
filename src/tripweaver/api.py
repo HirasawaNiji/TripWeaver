@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
+from tripweaver import __version__
 from tripweaver.agent import (
     AgentRun,
     AgentRunStatus,
@@ -29,8 +30,9 @@ from tripweaver.config import (
     VariflightSettings,
 )
 from tripweaver.conversation import (
-    ConversationPlanningService,
+    HybridConversationPlanningService,
     RevisionIntent,
+    SessionMode,
     SessionNotFoundError,
     UnsafeRevisionError,
 )
@@ -44,6 +46,8 @@ from tripweaver.llm.runtime import (
     RequestInterpreter,
     RevisionInterpreter,
 )
+from tripweaver.operations import ReadinessReport, inspect_readiness
+from tripweaver.planner.conflicts import ConflictAnalyzer, PlanningConflictError
 from tripweaver.planner.engine import NoFeasiblePlanError
 from tripweaver.runtime import MetricsStore
 
@@ -52,6 +56,10 @@ class TextPlanRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     text: str = Field(min_length=1, max_length=2000)
+
+
+class SessionCreateRequest(TextPlanRequest):
+    mode: SessionMode = SessionMode.DEMO
 
 
 class PlanSelectionRequest(BaseModel):
@@ -79,6 +87,7 @@ def create_app(
     request_interpreter: RequestInterpreter | None = None,
     revision_interpreter: RevisionInterpreter | None = None,
     llm_settings: DeepSeekSettings | None = None,
+    conversation_service: HybridConversationPlanningService | None = None,
 ) -> FastAPI:
     llm_settings = llm_settings or DeepSeekSettings.from_env()
     request_language = request_interpreter or (
@@ -92,18 +101,26 @@ def create_app(
         else DeterministicRevisionInterpreter()
     )
     plan_explainer = PlanExplainer(llm_settings)
-    conversations = ConversationPlanningService()
+    conversations = conversation_service or HybridConversationPlanningService(
+        hybrid_factory=lambda: HybridTripPlanningService.from_settings(
+            AmapSettings.from_env(),
+            RailwaySettings.from_env(),
+            VariflightSettings.from_env(),
+            LodgingSettings.from_env(),
+            RuntimeSettings.from_env(),
+        )
+    )
     web_dir = Path(__file__).with_name("web")
     app = FastAPI(
         title="TripWeaver API",
-        version="3.0.0",
+        version=__version__,
         description="Query-only, provenance-aware constrained travel planning.",
     )
 
     async def health() -> dict[str, object]:
         return {
             "status": "ok",
-            "version": "3.0.0",
+            "version": __version__,
             "booking_enabled": False,
             "data_policy": "live-with-explicit-fallback",
             "llm_enabled": llm_settings.enabled,
@@ -111,10 +128,13 @@ def create_app(
             "llm_model": llm_settings.model if llm_settings.enabled else None,
         }
 
+    async def readiness() -> ReadinessReport:
+        return inspect_readiness()
+
     async def fixture_plan(body: TextPlanRequest) -> object:
         try:
             return TripPlanningService().plan_text(body.text)
-        except (RequestParseError, NoFeasiblePlanError, ValueError) as error:
+        except (RequestParseError, ValueError) as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
 
     async def live_agent_run(body: TextPlanRequest) -> AgentRun:
@@ -153,19 +173,27 @@ def create_app(
         settings = RuntimeSettings.from_env()
         return MetricsStore(settings.database_path).summary()
 
-    async def create_session(body: TextPlanRequest) -> object:
+    async def create_session(body: SessionCreateRequest) -> object:
         try:
             interpretation = request_language.interpret(body.text)
-            if interpretation.request is None:
-                return {
-                    "status": "NEEDS_INPUT",
-                    "questions": interpretation.questions,
-                    "language": interpretation.metadata,
-                }
-            session = conversations.create(interpretation.request)
-            return conversations.record_model_call(session.id, interpretation.metadata)
-        except (RequestParseError, NoFeasiblePlanError, ValueError) as error:
+        except (RequestParseError, ValueError) as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
+        if interpretation.request is None:
+            return {
+                "status": "NEEDS_INPUT",
+                "questions": interpretation.questions,
+                "language": interpretation.metadata,
+            }
+        try:
+            session = await conversations.create(interpretation.request, mode=body.mode)
+        except NoFeasiblePlanError as error:
+            conflict = ConflictAnalyzer.analyze(error, interpretation.request)
+            raise HTTPException(
+                status_code=409, detail=conflict.model_dump(mode="json")
+            ) from error
+        except ConfigurationError as error:
+            raise HTTPException(status_code=503, detail=type(error).__name__) from error
+        return conversations.record_model_call(session.id, interpretation.metadata)
 
     async def get_session(session_id: str) -> object:
         try:
@@ -190,6 +218,10 @@ def create_app(
             raise HTTPException(status_code=404, detail="session not found") from error
         except UnsafeRevisionError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
+        except PlanningConflictError as error:
+            raise HTTPException(
+                status_code=409, detail=error.conflict.model_dump(mode="json")
+            ) from error
         except (NoFeasiblePlanError, ValueError) as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
 
@@ -200,6 +232,22 @@ def create_app(
             raise HTTPException(status_code=404, detail="session not found") from error
         except ValueError as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
+
+    async def refresh_session(session_id: str) -> object:
+        try:
+            return await conversations.refresh(session_id)
+        except SessionNotFoundError as error:
+            raise HTTPException(status_code=404, detail="session not found") from error
+        except ConfigurationError as error:
+            raise HTTPException(status_code=503, detail=type(error).__name__) from error
+        except (NoFeasiblePlanError, ValueError) as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+
+    async def session_trace(session_id: str) -> object:
+        try:
+            return conversations.trace_summary(session_id)
+        except SessionNotFoundError as error:
+            raise HTTPException(status_code=404, detail="session not found") from error
 
     async def lock_session(session_id: str, body: SessionLockRequest) -> object:
         try:
@@ -237,6 +285,10 @@ def create_app(
             )
         except SessionNotFoundError as error:
             raise HTTPException(status_code=404, detail="session not found") from error
+        except PlanningConflictError as error:
+            raise HTTPException(
+                status_code=409, detail=error.conflict.model_dump(mode="json")
+            ) from error
         except (NoFeasiblePlanError, ValueError) as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
 
@@ -244,6 +296,7 @@ def create_app(
         return FileResponse(web_dir / "index.html")
 
     app.add_api_route("/health", health, methods=["GET"])
+    app.add_api_route("/readiness", readiness, methods=["GET"], response_model=ReadinessReport)
     app.add_api_route("/v1/plans/fixture", fixture_plan, methods=["POST"])
     app.add_api_route("/v1/agent/runs", live_agent_run, methods=["POST"], response_model=AgentRun)
     app.add_api_route("/v1/metrics", metrics, methods=["GET"])
@@ -257,6 +310,12 @@ def create_app(
     )
     app.add_api_route(
         "/v2/sessions/{session_id}/undo", undo_session, methods=["POST"]
+    )
+    app.add_api_route(
+        "/v2/sessions/{session_id}/refresh", refresh_session, methods=["POST"]
+    )
+    app.add_api_route(
+        "/v2/sessions/{session_id}/trace", session_trace, methods=["GET"]
     )
     app.add_api_route(
         "/v2/sessions/{session_id}/locks", lock_session, methods=["PUT"]

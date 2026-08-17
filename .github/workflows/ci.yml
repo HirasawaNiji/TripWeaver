@@ -20,4 +20,7 @@ jobs:
       - run: uv run ruff check src tests
       - run: uv run pyright
       - run: node --check src/tripweaver/web/app.js
+      - run: uv build
+      - run: uv run tripweaver doctor --json
       - run: uv run tripweaver evaluate --output reports/evaluation-fixture-v2.json
+      - run: uv run tripweaver evaluate-agent --output reports/evaluation-agent-v3.json

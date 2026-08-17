@@ -2,7 +2,7 @@
 
 ## Phase 16
 
-OpenAI Structured Outputs now converts free-form requests and revisions into strict Pydantic schemas. Missing hard constraints produce clarification questions. Provider or schema failures fall back to deterministic parsers. A grounded explainer can narrate only validated plan facts.
+DeepSeek JSON Output converts free-form requests and revisions into strict Pydantic schemas. Missing hard constraints produce clarification questions. Provider or schema failures fall back to deterministic parsers. A grounded explainer can narrate only validated plan facts.
 
 The Web UI renders concrete attractions, times, route legs, admissions, transport, lodging, budget, freshness, and source metadata.
 

@@ -2,7 +2,7 @@
 
 TripWeaver 是一个基于 MCP 的多源约束旅行规划 Agent。它的目标不是让大模型自由生成攻略，而是把交通、地图、住宿和用户约束转换成一份有来源、可计算、可验证的结构化行程。
 
-> 当前版本是 `3.0.0` / Phase 19 Interactive Portfolio Release。TripWeaver 覆盖 10 城市、多源实时快照、三目标候选方案、OpenAI Structured Outputs、对话式局部重规划、完整 Web 工作台、120 案例评测与工程化交付。
+> 当前版本是 `3.5.0` / Phase 24 Demo Readiness。TripWeaver 覆盖 10 城市、多源实时会话快照、三目标候选方案、DeepSeek JSON Output、对话式局部重规划、结构化冲突、双评测套件、执行 Trace 与可重复演示自检。
 
 ## Phase 1 已实现
 
@@ -130,7 +130,7 @@ TripWeaver 是一个基于 MCP 的多源约束旅行规划 Agent。它的目标�
 - 未被修改的去程、返程和住宿自动锁定，修改景点时不重复查询 MCP
 - 确定性修改解析器覆盖交通、酒店价格、规划目标、方案选择和按日替换
 - Prompt Injection 防线阻止读取环境变量、泄露系统提示词和绕过 Validator
-- 可选 OpenAI Structured Outputs 解释器严格输出到同一 `RevisionIntent` 白名单
+- 可选结构化 LLM 解释器严格输出到同一 `RevisionIntent` 白名单
 - 地图、铁路和航班只获取一次并冻结，同一快照生成预算、均衡、时间三套方案
 - MCP Adapter 按工具参数与 TTL 缓存规范化查询，命中来源标记为 `CACHED`
 - FastAPI v2 会话接口与内置响应式 Web Demo，展示方案卡片、Diff 和事件时间线
@@ -139,7 +139,7 @@ TripWeaver 是一个基于 MCP 的多源约束旅行规划 Agent。它的目标�
 
 ## Phase 16–19 已实现
 
-- OpenAI Responses API 同时接入初始需求、修改意图、澄清问题和行程解释
+- DeepSeek JSON Output 同时接入初始需求、修改意图、澄清问题和行程解释
 - 所有 LLM 输出经过 Pydantic Schema；失败时自动降级到确定性解释器
 - 会话记录模型、输入/输出 Token、延迟、降级状态，但不保存 Key 或原始响应
 - Web 展示逐日景点、起止时间、路线、门票、交通、住宿和完整预算
@@ -148,16 +148,43 @@ TripWeaver 是一个基于 MCP 的多源约束旅行规划 Agent。它的目标�
 - 内置无额外网络依赖的 SVG 行程地图、预算图表和来源可信度面板
 - 三组一键演示案例、完全离线 Fixture 模式、API/UI 端到端测试和发布检查清单
 
+## Phase 20–23 已实现
+
+- Web Session 支持 `DEMO / LIVE` 双模式，实时模式统一查询高德、12306、飞常准与住宿数据
+- 每个会话保存不可变 `PlanningSnapshot`，包含来源状态、查询时间、TTL、降级原因与刷新次数
+- 对话修改、景点替换、锁定和撤销全部复用冻结快照，只有用户主动刷新才再次调用 MCP
+- 预算不足、交通窗口、住宿限制、景点容量和锁定冲突统一输出结构化 `PlanningConflict`
+- 冲突结果包含稳定错误码、阻塞约束、预算缺口和可操作的放宽建议
+- 新增 40 组两轮 Agent 评测，统计需求结构化、修改意图、Schema、硬约束、保留率和快照复用率
+- Agent 评测默认使用零成本确定性基线，也可通过 `--live-llm` 对 DeepSeek 进行小规模真实评测
+- Session Trace 统一记录 LLM、MCP、Planner 与 Validator 的状态、延迟、Token 和降级
+- Web 新增实时刷新、快照新鲜度、冲突建议和 Execution Trace 可观测性面板
+
+## Phase 24 已实现
+
+- 新增 `tripweaver doctor`，在不访问网络、不输出 Key 的前提下检查 Python、`.env`、缓存、LLM 与三个 Provider 配置
+- `tripweaver doctor --live` 对高德、12306 和飞常准执行只读能力发现，提前暴露凭证、Node 或 MCP 可用性问题
+- 新增 `tripweaver serve`，用一个跨平台命令启动本地 API 与 Web Demo
+- 新增 `/readiness` API，Web 顶部直接显示 LIVE Provider 就绪数量与降级状态
+- Docker 改用统一启动命令并增加健康检查；CI 增加 Doctor 与 40 组 Agent 评测门禁
+- 所有诊断结果只包含状态、错误类型和安全建议，不包含 Key、端点参数或上游正文
+
 ## 快速开始
 
 需要 Python 3.12+。推荐使用 `uv`：
 
 ```powershell
 uv sync
+uv run tripweaver doctor
+uv run tripweaver doctor --live
+uv run tripweaver serve
 uv run tripweaver demo
 uv run tripweaver demo --json
 uv run python examples/gateway_demo.py
+uv run tripweaver evaluate-agent --output reports/evaluation-agent-v3.json
 ```
+
+启动后打开 `http://127.0.0.1:8000`。仅展示 Fixture 时运行普通 `doctor` 即可；需要展示实时数据时，先运行 `doctor --live`，确认三个 Provider 的能力发现均为 `PASS`。
 
 验证并查询高德官方 MCP：
 
