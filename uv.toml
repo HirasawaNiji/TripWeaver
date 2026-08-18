@@ -1,0 +1,4 @@
+# The uv cache is normally on C: while this project lives on E: on Windows.
+# Copy mode avoids cross-volume hardlink warnings and remains portable elsewhere.
+link-mode = "copy"
+
