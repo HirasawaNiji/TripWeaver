@@ -8,6 +8,7 @@ version = "3.5.0"
 description = "A provenance-aware, constraint-driven travel planning agent."
 readme = "README.md"
 requires-python = ">=3.12"
+license = "MIT"
 authors = [{ name = "HirasawaNiji" }]
 dependencies = [
   "fastapi>=0.115,<1",
@@ -20,6 +21,11 @@ dependencies = [
 
 [project.scripts]
 tripweaver = "tripweaver.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/HirasawaNiji/TripWeaver"
+Repository = "https://github.com/HirasawaNiji/TripWeaver"
+Issues = "https://github.com/HirasawaNiji/TripWeaver/issues"
 
 [dependency-groups]
 dev = [

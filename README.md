@@ -1,298 +1,188 @@
-# TripWeaver
+<p align="center">
+  <img src="docs/assets/social-preview-v3.png" alt="TripWeaver — 让每一程都有据可循" width="100%">
+</p>
 
-TripWeaver 是一个基于 MCP 的多源约束旅行规划 Agent。它的目标不是让大模型自由生成攻略，而是把交通、地图、住宿和用户约束转换成一份有来源、可计算、可验证的结构化行程。
+<h1 align="center">TripWeaver</h1>
 
-> 当前版本是 `3.5.0` / Phase 24 Demo Readiness。TripWeaver 覆盖 10 城市、多源实时会话快照、三目标候选方案、DeepSeek JSON Output、对话式局部重规划、结构化冲突、双评测套件、执行 Trace 与可重复演示自检。
+<p align="center">
+  <strong>MCP-powered, constraint-validated conversational travel planning.</strong><br>
+  多源事实、确定性规划、可验证输出，以及不会在对话中悄悄失真的局部重规划。
+</p>
 
-## Phase 1 已实现
+<p align="center">
+  <a href="https://github.com/HirasawaNiji/TripWeaver/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/HirasawaNiji/TripWeaver/actions/workflows/ci.yml/badge.svg"></a>
+  <img alt="Python 3.12+" src="https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&logoColor=white">
+  <img alt="Version 3.5.0" src="https://img.shields.io/badge/version-3.5.0-c9ff57?labelColor=111516">
+  <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-70b7ff?labelColor=111516"></a>
+</p>
 
-- 将有限格式的中文旅行需求解析为 `TripRequest`
-- 使用北京往返上海的确定性 Fixture 数据代替外部 MCP
-- 选择往返交通和住宿区域
-- 在开放时间、交通耗时、每日时长和预算约束下安排 3 日行程
-- 独立重新验证交通、开放时间、路线缓冲、预算和数据来源
-- 在每个外部事实上标记 `FIXTURE` 或 `ESTIMATED` 及来源 URI
-- 提供可复现的 CLI 摘要和完整 JSON 输出
-- 覆盖正常、低预算、越界城市、结果稳定性和预算篡改测试
+TripWeaver 不是“让大模型自由生成旅游攻略”的包装层。它统一接入地图、铁路、航班与住宿位置数据，把用户自然语言转换成结构化约束，在冻结的数据快照上生成三套候选方案，再由独立 Validator 检查时间、预算、营业窗口、换乘与来源完整性。
 
-## Phase 2 已实现
+LLM 只负责理解偏好与解释结果；关键计算、方案选择和可行性判断始终由程序完成。
 
-- MCP Server 注册、启停状态和工具能力缓存
-- MCP SDK v2 Streamable HTTP、stdio 和内存 transport
-- 分页工具发现与统一结构化调用结果
-- 每个 Server 独立的 Semaphore 并发上限
-- 单次调用超时、指数退避和有限重试
-- 只有显式幂等调用允许重试，避免重复执行有副作用的工具
-- `UNKNOWN → UP / DEGRADED / DOWN / DISABLED` 健康状态
-- 不记录参数、URL 和环境变量的脱敏调用 Trace
-- Pydantic Adapter schema 校验和自动来源元数据
-- 真实 MCP SDK 内存连接及故障注入 contract tests
+## What makes it different
 
-## Phase 3 已实现
+| 能力 | TripWeaver 的实现 |
+|---|---|
+| 多源接入 | MCP Gateway 统一高德、12306 社区 MCP 与飞常准，包含 Schema 归一化、超时、重试、限流和健康检查 |
+| 可重复规划 | 每个会话冻结 `PlanningSnapshot`；修改方案不会重新查询外部服务，除非用户明确刷新 |
+| 硬约束 | 确定性 Planner 处理预算、日期、开放时间、首末日窗口、住宿价格和换乘缓冲 |
+| 对话式修改 | 三选一、交通/住宿锁定、景点替换、撤销、结构化 Diff 与局部重规划 |
+| 诚实失败 | 预算不足、交通窗口和锁定冲突返回稳定错误码与可操作的放宽建议，不让 LLM 编造结果 |
+| 可观测性 | LLM、MCP、Planner、Validator Trace，包含延迟、Token、来源、TTL、缓存与降级状态 |
+| 可演示性 | 完全离线 DEMO、实时 LIVE 模式、`doctor` 自检、一键启动和固定评测集 |
 
-- 从进程环境或本地 `.env` 安全读取 `AMAP_MAPS_API_KEY`
-- 高德官方 Streamable HTTP MCP 注册、能力校验和健康检查
-- 显式兼容高德在 `TextContent` 中返回 JSON 的协议形态
-- POI 搜索与详情、天气、地理编码、步行和公交路线归一化
-- 每个实时结果附 `LIVE`、查询时间、TTL 和脱敏 Trace 来源
-- Key、完整 MCP URL、查询参数和原始响应均不进入 Trace
-- 实时服务失败时返回非零状态并明确提示继续使用 Fixture 模式
-- 通过内存 MCP 契约测试和真实高德 MCP 端到端探针
+## Verified results
 
-## Phase 4 已实现
+| 质量指标 | 当前结果 |
+|---|---:|
+| 自动化测试 | **90 passed** |
+| 固定规划评测 | **120 / 120** |
+| 多轮 Agent 评测 | **40 / 40** |
+| 硬约束满足率 | **100%** |
+| 来源完整率 | **100%** |
+| 快照复用率 | **100%** |
+| 当前 LIVE Provider 就绪度 | **3 / 3** |
+| Pyright | **0 errors** |
 
-- 在网络阶段并发预取高德 POI、详情、天气和市内公交路线
-- 将外部数据冻结为同步 Snapshot，Planner 算法循环中不发网络请求
-- 根据用户兴趣和优先级确定性选择最多 4 个实时景点候选
-- 实时名称、类别、坐标、路线距离和耗时进入约束规划
-- 门票、建议时长、开放窗口和公交费用使用明确标注的本地策略
-- 单个 POI 失败时从候选集移除，单条路线失败时使用估算路线
-- 可用实时 POI 少于 2 个时完整回退 Fixture，并只暴露安全错误类型
-- 天气预报必须覆盖旅行日期，否则不写入旅行上下文
-- 输出原始营业时间提示、字段假设、来源状态、TTL 和 Trace
+评测报告保存在 [`reports/`](reports/)；所有比例均由仓库中的固定测试集实际运行得出。
 
-## Phase 5 已实现
+## How it works
 
-- 使用固定版本 `12306-mcp@0.3.10` 的 stdio MCP，只开放余票查询能力
-- 将 MCP JSON 严格归一化为带来源的铁路票和 `TransportOption`
-- 只接收“有/充足/正整数余票”且价格大于 0 的席别，候补与未知状态不进入 Planner
-- 去程与返程并发查询；每一程独立替换 Fixture 铁路候选
-- 单程失败、超出售窗口或无可确认席别时，仅该程显式降级
-- 铁路查询结果标记 `LIVE`、查询时间、2 分钟 TTL 和脱敏 Trace URI
-- Planner 在比较价格与耗时前先过滤无法保留首末日活动窗口的晚班车
-- CLI 明确标注其为非官方社区数据源，且不提供登录、抢票、预订或下单
-- 飞常准航空 MCP 已确认需要独立 API Key，本阶段保留航空 Fixture，不伪装接通
+```mermaid
+flowchart LR
+    A["自然语言需求"] --> B["DeepSeek JSON / 确定性解析"]
+    B --> C["结构化 TripRequest"]
+    C --> D["并发 MCP Gateway"]
+    D --> E["冻结 PlanningSnapshot"]
+    E --> F["三目标约束规划"]
+    F --> G["独立 Validator"]
+    G --> H["可执行行程 + 来源"]
+    H --> I["对话式局部重规划"]
+    I -->|"复用同一快照"| F
+    D --> J["Execution Trace"]
+    F --> J
+    G --> J
+```
 
-## Phase 6 已实现
+规划目标提供 `BUDGET`、`BALANCED`、`TIME` 三种策略。用户可以先比较方案，再锁定满意的去程、返程或住宿，只调整剩余部分。
 
-- 从私有 `.env` 安全读取 `VARIFLIGHT_API_KEY`，Key 不进入 repr、Trace 或来源 URI
-- 固定官方 npm 包 `@variflight-ai/variflight-mcp@1.0.3`，限制配置只能选择该包或语义版本
-- 使用 `getFlightPriceByCities` 获取带舱位余量的结构化实时航班报价
-- 将 Unix 计划起降时间归一化为中国标准时间，并验证出发日期与请求一致
-- 每班航班只保留价格最低且余位大于 0 的舱位
-- 税费只在上游返回明确数字时计入，空税费不伪造估算
-- 去返程并发查询；每一程独立替换航空 Fixture，并与铁路查询并发执行
-- 为航空规划预留抵达后 90 分钟、起飞前 150 分钟及 180 分钟广义时间开销
-- 输出机场、航站楼、舱等、余位、5 分钟 TTL 和脱敏来源 Trace
-- 机场地面接驳费用尚未进入预算，输出中会明确提示
+## Quick start
 
-## Phase 7 已实现
-
-- 高德酒店 POI、地址、评分和位置进入住宿候选
-- 以候选酒店为住宿区域锚点，并预取其到景点的公交路线
-- Planner 按每晚费用与通勤时间确定性选择住宿区域
-- 支持 `LODGING_NIGHTLY_PRICE_CNY` 用户价格输入
-- 未提供用户价格时只使用明确标注的评分档位估算
-- 不把高德人均消费包装为房价，也不声称存在可售房型
-
-## Phase 8 已实现
-
-- `REQUIREMENTS → PARSE → FETCH → PLAN → VALIDATE → EXPLAIN` 受控状态机
-- 缺少路线、日期、天数、人数或预算时先澄清，且不调用外部工具
-- 外部数据获取与确定性规划保持分层
-- 只有 Validator 通过的 `PlanResult` 才能生成解释
-- 解释完全引用结构化字段，不允许修改班次、时间和金额
-- 当前仍使用确定性中文解析器；已保留替换 LLM 解析器的边界
-
-## Phase 9 已实现
-
-- SQLite 持久化 TTL 方案缓存，默认有效期 90 秒
-- 缓存命中时将原始 `LIVE` 来源降为 `CACHED`
-- 只缓存已经通过 Validator 的方案
-- 持久化成功率、缓存命中、实时数据使用率和平均延迟
-- 指标库不存储用户原始请求、MCP 参数、响应正文或 API Key
-- 缓存与指标目录默认加入 `.gitignore`
-
-## Phase 10 已实现
-
-- 40 组固定离线旅行需求评测
-- 统计预期结果准确率、硬约束满足率、不可行率、来源完整率和稳定性
-- 明确记录当前确定性链路 Token 成本为 0
-- FastAPI 提供健康检查、Fixture 规划、受控 Agent 和聚合指标接口
-- Pydantic 严格请求/响应模型与安全错误边界
-- 项目版本升级为 `1.0.0`
-
-## Phase 11 已实现
-
-- 共享城市注册表覆盖北京、上海、广州、深圳、杭州、南京、成都、重庆、西安和武汉
-- 城市别名、IATA 城市码、高德 adcode 和中心坐标统一管理
-- 10 城市各提供 6 个带来源的 Fixture 景点种子和 2 个住宿区域
-- Fixture 交通按城市距离确定性生成，不再绑定北京—上海
-- 飞常准城市映射扩展到全部 10 城市；12306 原生接受通用中文城市名
-- 保留京沪旧 Fixture ID，确保 Phase 5/6 Provider 替换契约不回归
-- 支持 `BUDGET / BALANCED / TIME` 三种目标函数
-- `PlanningOverrides` 支持固定去返程、固定住宿、房价上限和排除景点
-- 新增 `alternatives` CLI，从同一数据快照生成三套可验证方案
-
-## Phase 12–15 已实现
-
-- 方案会话支持三选一、自然语言修改、局部重规划和结构化 `PlanDiff`
-- 未被修改的去程、返程和住宿自动锁定，修改景点时不重复查询 MCP
-- 确定性修改解析器覆盖交通、酒店价格、规划目标、方案选择和按日替换
-- Prompt Injection 防线阻止读取环境变量、泄露系统提示词和绕过 Validator
-- 可选结构化 LLM 解释器严格输出到同一 `RevisionIntent` 白名单
-- 地图、铁路和航班只获取一次并冻结，同一快照生成预算、均衡、时间三套方案
-- MCP Adapter 按工具参数与 TTL 缓存规范化查询，命中来源标记为 `CACHED`
-- FastAPI v2 会话接口与内置响应式 Web Demo，展示方案卡片、Diff 和事件时间线
-- 120 组离线评测覆盖 10 城市、可行/不可行预算、重规划保留率与安全拒绝率
-- GitHub Actions、Docker、Compose、贡献指南、变更日志和架构文档
-
-## Phase 16–19 已实现
-
-- DeepSeek JSON Output 同时接入初始需求、修改意图、澄清问题和行程解释
-- 所有 LLM 输出经过 Pydantic Schema；失败时自动降级到确定性解释器
-- 会话记录模型、输入/输出 Token、延迟、降级状态，但不保存 Key 或原始响应
-- Web 展示逐日景点、起止时间、路线、门票、交通、住宿和完整预算
-- 支持景点快捷替换、交通/住宿锁定、撤销和版本历史
-- 内置双栏 Agent 工作台、修改 Diff、事件时间线和模型运行统计
-- 内置无额外网络依赖的 SVG 行程地图、预算图表和来源可信度面板
-- 三组一键演示案例、完全离线 Fixture 模式、API/UI 端到端测试和发布检查清单
-
-## Phase 20–23 已实现
-
-- Web Session 支持 `DEMO / LIVE` 双模式，实时模式统一查询高德、12306、飞常准与住宿数据
-- 每个会话保存不可变 `PlanningSnapshot`，包含来源状态、查询时间、TTL、降级原因与刷新次数
-- 对话修改、景点替换、锁定和撤销全部复用冻结快照，只有用户主动刷新才再次调用 MCP
-- 预算不足、交通窗口、住宿限制、景点容量和锁定冲突统一输出结构化 `PlanningConflict`
-- 冲突结果包含稳定错误码、阻塞约束、预算缺口和可操作的放宽建议
-- 新增 40 组两轮 Agent 评测，统计需求结构化、修改意图、Schema、硬约束、保留率和快照复用率
-- Agent 评测默认使用零成本确定性基线，也可通过 `--live-llm` 对 DeepSeek 进行小规模真实评测
-- Session Trace 统一记录 LLM、MCP、Planner 与 Validator 的状态、延迟、Token 和降级
-- Web 新增实时刷新、快照新鲜度、冲突建议和 Execution Trace 可观测性面板
-
-## Phase 24 已实现
-
-- 新增 `tripweaver doctor`，在不访问网络、不输出 Key 的前提下检查 Python、`.env`、缓存、LLM 与三个 Provider 配置
-- `tripweaver doctor --live` 对高德、12306 和飞常准执行只读能力发现，提前暴露凭证、Node 或 MCP 可用性问题
-- 新增 `tripweaver serve`，用一个跨平台命令启动本地 API 与 Web Demo
-- 新增 `/readiness` API，Web 顶部直接显示 LIVE Provider 就绪数量与降级状态
-- Docker 改用统一启动命令并增加健康检查；CI 增加 Doctor 与 40 组 Agent 评测门禁
-- 所有诊断结果只包含状态、错误类型和安全建议，不包含 Key、端点参数或上游正文
-
-## 快速开始
-
-需要 Python 3.12+。推荐使用 `uv`：
+需要 Python 3.12+ 和 [uv](https://docs.astral.sh/uv/)。离线演示不需要任何 API Key，也不需要 Node.js。
 
 ```powershell
-uv sync
+git clone https://github.com/HirasawaNiji/TripWeaver.git
+cd TripWeaver
+uv sync --frozen
 uv run tripweaver doctor
-uv run tripweaver doctor --live
 uv run tripweaver serve
-uv run tripweaver demo
-uv run tripweaver demo --json
-uv run python examples/gateway_demo.py
-uv run tripweaver evaluate-agent --output reports/evaluation-agent-v3.json
 ```
 
-启动后打开 `http://127.0.0.1:8000`。仅展示 Fixture 时运行普通 `doctor` 即可；需要展示实时数据时，先运行 `doctor --live`，确认三个 Provider 的能力发现均为 `PASS`。
+打开 [http://127.0.0.1:8000](http://127.0.0.1:8000)。
 
-验证并查询高德官方 MCP：
+项目使用 `copy` 安装模式，避免 Windows 上 uv 缓存位于 C 盘、项目位于 E 盘时出现跨磁盘硬链接警告。
+
+### Enable LIVE mode
 
 ```powershell
-uv run tripweaver amap health
-uv run tripweaver amap search "博物馆" --city "上海" --limit 5
-uv run tripweaver amap detail "搜索返回的POI_ID"
-uv run tripweaver amap weather "上海"
-uv run tripweaver amap geocode "上海博物馆" --city "上海"
-uv run tripweaver amap route walking "121.475480,31.228231" "121.490400,31.240000"
-uv run tripweaver amap route transit "121.475480,31.228231" "121.490400,31.240000" --city 310000
+Copy-Item .env.example .env
 ```
 
-验证并查询 12306 社区 MCP（需要 Node.js 18+ 与 `npx`）：
-
-```powershell
-uv run tripweaver railway health
-uv run tripweaver railway search 2026-08-20 北京 上海 --limit 10
-uv run tripweaver railway search 2026-08-20 北京 上海 --limit 10 --json
-```
-
-日期必须处于 12306 当前允许查询/售票的范围内；示例日期仅展示命令格式，运行时请替换为有效日期。
-
-验证并查询飞常准 MCP：
-
-```powershell
-uv run tripweaver aviation health
-uv run tripweaver aviation search 2026-08-20 北京 上海 --limit 10
-uv run tripweaver aviation search 2026-08-20 BJS SHA --limit 10 --json
-```
-
-真实 Key 只放在 `.env` 的 `VARIFLIGHT_API_KEY` 中。复制新版 `.env.example` 时还需要将 `VARIFLIGHT_MCP_ENABLED` 改为 `true`。
-
-真实 Key 只写入不提交的 `.env`，变量名和运行策略参考 `.env.example`。
-
-也可以规划受支持格式的中文请求：
-
-```powershell
-uv run tripweaver plan "从北京去上海玩3天，2026-10-01出发，2个人，预算5000元，喜欢历史文化和城市夜景"
-uv run tripweaver plan "从广州去成都玩4天，2026-10-01出发，2个人，预算10000元，喜欢历史文化和美食街区"
-uv run tripweaver alternatives "从广州去成都玩4天，2026-10-01出发，2个人，预算10000元，高铁或飞机都可以"
-```
-
-使用高德实时地图与只读铁路数据生成混合可验证行程：
-
-```powershell
-uv run tripweaver plan-live "从北京去上海玩3天，2026-10-01出发，2个人，预算5000元，喜欢历史文化和城市夜景"
-uv run tripweaver plan-live "从北京去上海玩3天，2026-10-01出发，2个人，预算5000元" --json
-```
-
-运行受控 Agent、评测与指标：
-
-```powershell
-uv run tripweaver agent "从北京去上海玩3天，2026-10-01出发，2个人，预算8000元，喜欢历史文化和城市夜景，高铁或飞机都可以"
-uv run tripweaver evaluate
-uv run tripweaver evaluate --json --output reports/evaluation-fixture-v1.json
-uv run tripweaver metrics
-```
-
-启动 API：
-
-```powershell
-uv run uvicorn tripweaver.api:app --host 127.0.0.1 --port 8000
-```
-
-Web Demo 位于 `http://127.0.0.1:8000/`，接口文档位于 `http://127.0.0.1:8000/docs`。
-
-启用可选 LLM：
+在私有 `.env` 中配置：
 
 ```dotenv
+AMAP_MAPS_API_KEY=your_amap_web_service_key_here
+RAILWAY_MCP_ENABLED=true
+VARIFLIGHT_MCP_ENABLED=true
+VARIFLIGHT_API_KEY=your_variflight_api_key_here
+
 DEEPSEEK_ENABLED=true
 DEEPSEEK_API_KEY=your_deepseek_api_key_here
 DEEPSEEK_MODEL=deepseek-v4-flash
-DEEPSEEK_BASE_URL=https://api.deepseek.com
 ```
 
-未配置或调用失败时，系统自动回退到确定性解析和解释，规划器与 Validator 行为不变。
-
-语言边界使用 [DeepSeek JSON Output](https://api-docs.deepseek.com/zh-cn/guides/json_mode)，并在本地通过 Pydantic Schema 严格校验；LLM 不拥有 MCP 工具调用、关键计算或 Validator 绕过权限。
-
-运行测试：
+铁路与飞常准 MCP 使用固定 npm 包，需要 Node.js 18+ 和 `npx`。启动前运行只读能力探测：
 
 ```powershell
-uv run pytest -q
-uv run ruff check src tests
-uv run pyright
+uv run tripweaver doctor --live
+uv run tripweaver serve
 ```
 
-## 当前边界
+`.env`、本地数据库、缓存和凭证均已加入 `.gitignore`。Doctor 和 Trace 不输出 API Key、完整端点参数、Prompt 或上游正文。
 
-- 当前支持 10 个注册城市之间的 1–7 天往返行程；尚不支持注册表外城市
-- 默认解析器是确定性的有限中文语法；配置 `DEEPSEEK_ENABLED=true` 后可使用可选结构化 LLM 解释器
-- `plan` 和 `demo` 不访问实时服务；`amap`、`railway`、`aviation` 与 `plan-live` 才访问外部 MCP
-- 12306 数据来自社区项目而非铁路官方发布，接口变化、限流和可用性风险必须显式处理
-- 飞常准最低舱位价可能不含税费，且机场往返市区费用尚未进入预算
-- 酒店位置与评分来自高德，但尚未接入任何 OTA 实时房型和房价服务
-- 不登录、不抢票、不预订、不下单
-- Web UI 与 API 面向本地作品集演示；未实现身份认证和公网生产部署策略
-- 高德复杂营业日历尚未自动转成硬约束，当前保留原文并使用规划基线
-- 高德不提供可靠门票和推荐游玩时长，相关字段保持估算
-- 方案缓存和聚合运行指标已持久化；MCP 工具发现缓存与健康状态仍为进程内数据
+## Data sources and trust boundary
 
-## 架构原则
+| 数据域 | 来源 | 使用方式 | 降级策略 |
+|---|---|---|---|
+| 地图、POI、天气、市内路线 | 高德官方 MCP | 实时查询与严格归一化 | Fixture POI / 估算路线并明确标记 |
+| 铁路 | `12306-mcp@0.3.10` 社区项目 | 只读余票与价格查询 | 单程 Fixture，不登录 12306 |
+| 航班 | `@variflight-ai/variflight-mcp@1.0.3` | 只读航班价格与舱位 | 单程 Fixture，不预订 |
+| 住宿 | 高德酒店 POI + 本地价格策略 | 推荐位置与住宿区域 | 用户价格或明确的评分档估算 |
+| 语言理解 | DeepSeek JSON Output | 结构化需求、修改意图与解释 | 确定性解析器 |
 
-`Requirement Guard → TripRequest → MCP Gateway / Fixture → Snapshot → Deterministic Planner → Independent Validator → Grounded Explanation`
+每个外部事实都携带 `LIVE`、`CACHED`、`FIXTURE` 或 `ESTIMATED` 状态、查询时间、TTL 和脱敏来源。
 
-结构化 `PlanResult` 是事实来源。后续接入 LLM 时，LLM 只能解析请求和解释已验证结果，不负责关键算术与可行性判断。
+## API and CLI
 
-更多说明见 `docs/` 下的阶段文档与 `docs/ARCHITECTURE_V2.md`。
+主要接口：
 
-MCP Gateway 基于官方 [MCP Python SDK v2](https://github.com/modelcontextprotocol/python-sdk)。
+- `GET /health`：进程和 LLM 模式
+- `GET /readiness`：无敏感信息的 DEMO / LIVE 就绪度
+- `POST /v2/sessions`：创建 DEMO 或 LIVE 会话
+- `POST /v2/sessions/{id}/revise`：局部重规划
+- `POST /v2/sessions/{id}/refresh`：显式刷新外部数据
+- `GET /v2/sessions/{id}/trace`：执行 Trace
+
+常用 CLI：
+
+```powershell
+uv run tripweaver demo
+uv run tripweaver alternatives "从北京去上海玩3天，2026-10-01出发，2个人，预算8000元"
+uv run tripweaver evaluate
+uv run tripweaver evaluate-agent
+uv run tripweaver metrics
+```
+
+Provider 调试命令见 [`docs/MCP_GATEWAY.md`](docs/MCP_GATEWAY.md)。
+
+## Project structure
+
+```text
+src/tripweaver/
+├── conversation/   # 会话、快照、锁定、Diff 与局部重规划
+├── mcp_gateway/    # MCP 注册、调用、重试、限流、缓存与 Trace
+├── providers/      # 高德、铁路、飞常准 Adapter
+├── planner/        # 确定性规划、候选生成与结构化冲突
+├── validator/      # 独立硬约束验证
+├── llm/            # DeepSeek JSON 边界与确定性回退
+├── evaluation/     # 120 组规划评测与 40 组 Agent 评测
+├── operations/     # Doctor 与演示就绪度
+├── web/            # 内置响应式 Agent 工作台
+└── api.py           # FastAPI 交付层
+```
+
+## Scope
+
+TripWeaver 是查询型作品集项目，不提供：
+
+- 12306 或 OTA 登录
+- 抢票、预订、支付和订单写入
+- 注册城市之外的任意全球路线
+- 酒店实时可售房型与 OTA 报价
+- 面向公网的身份认证与多租户部署
+
+外部 MCP 不可用时，系统会显式使用缓存或 Fixture，并把降级写入方案与 Trace。
+
+## Documentation
+
+- [Architecture V2](docs/ARCHITECTURE_V2.md)
+- [Phase 20–23: Live Conversational Agent](docs/PHASE_20_23_LIVE_AGENT.md)
+- [Phase 24: Demo Readiness](docs/PHASE_24_READINESS.md)
+- [Three-minute Demo Script](docs/DEMO_SCRIPT.md)
+- [Release Checklist](docs/RELEASE_CHECKLIST.md)
+- [Development roadmap](docs/ROADMAP.md)
+
+## License
+
+Released under the [MIT License](LICENSE).
